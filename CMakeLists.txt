@@ -1,0 +1,24 @@
+cmake_minimum_required(VERSION 3.20)
+
+project(synara LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+add_library(synara_tensor
+	src/tensor/shape.cpp
+	src/tensor/storage.cpp
+	src/tensor/strides.cpp
+	src/tensor/tensor.cpp
+)
+
+add_library(synara::tensor ALIAS synara_tensor)
+
+target_include_directories(synara_tensor
+	PUBLIC
+		${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+add_executable(synara tools/synara.cpp)
+target_link_libraries(synara PRIVATE synara_tensor)

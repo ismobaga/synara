@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <stdexcept>
+#include <ostream>
+#include <sstream>
 
 namespace synara
 {
@@ -41,21 +43,40 @@ namespace synara
     Tensor::Tensor()
         : shape_(),
           strides_(Strides::contiguous(shape_)),
-          storage_(std::make_shared<std::vector<value_type>>(1, 0.0)),
+          storage_(std::make_shared<Storage>(1, 0.0)),
           offset_(0) {}
 
     Tensor::Tensor(const Shape &shape)
         : shape_(shape),
           strides_(Strides::contiguous(shape_)),
-          storage_(std::make_shared<std::vector<value_type>>(shape.numel(), 0.0)),
+          storage_(std::make_shared<Storage>(shape.numel(), 0.0)),
           offset_(0) {}
 
     Tensor::Tensor(const Shape &shape, value_type fill_value)
         : shape_(shape),
           strides_(Strides::contiguous(shape_)),
-          storage_(std::make_shared<std::vector<value_type>>(shape.numel(), fill_value)),
-          offset_(0) {}
+          storage_(std::make_shared<Storage>(shape.numel())),
+          offset_(0)
+    {
+        std::fill(data(), data() + numel(), fill_value);
+    }
 
+          Tensor Tensor::zeros(const Shape &shape)
+          {
+              return Tensor(shape);
+          }
+
+          Tensor Tensor::ones(const Shape &shape)
+          {
+              return full(shape, 1.0f);
+          }
+
+          Tensor Tensor::full(const Shape &shape, value_type value)
+          {
+              Tensor t(shape);
+              std::fill(t.data(), t.data() + t.numel(), value);
+              return t;
+          }
     Tensor Tensor::from_vector(const Shape &shape, std::vector<value_type> values)
     {
         if (values.size() != shape.numel())
@@ -63,7 +84,7 @@ namespace synara
             throw std::invalid_argument("from_vector values do not match shape numel");
         }
         return Tensor(shape, Strides::contiguous(shape),
-                      std::make_shared<std::vector<value_type>>(std::move(values)), 0);
+                      std::make_shared<Storage>(std::move(values)), 0);
     }
 
     const Shape &Tensor::shape() const noexcept { return shape_; }
@@ -75,6 +96,7 @@ namespace synara
     std::size_t Tensor::numel() const noexcept { return shape_.numel(); }
 
     bool Tensor::is_contiguous() const { return strides_.is_contiguous(shape_); }
+    bool Tensor::is_scalar() const noexcept { return numel() == 1; }
 
     Tensor Tensor::reshape(const Shape &new_shape) const
     {
@@ -155,6 +177,27 @@ namespace synara
                       new_offset);
     }
 
+    Tensor::value_type *Tensor::data() noexcept
+    {
+        validate_storage();
+        return storage_->data() + offset_;
+    }
+
+    const Tensor::value_type *Tensor::data() const noexcept
+    {
+        validate_storage();
+        return storage_->data() + offset_;
+    }
+
+    Tensor::value_type Tensor::item() const
+    {
+        if (!is_scalar())
+        {
+            throw ValueError("item() requires a scalar tensor.");
+        }
+        return data()[0];
+    }
+
     Tensor::value_type &Tensor::at(const std::vector<std::size_t> &indices)
     {
         return (*storage_)[compute_offset(indices)];
@@ -179,7 +222,7 @@ namespace synara
     Tensor::Tensor(
         Shape shape,
         Strides strides,
-        std::shared_ptr<std::vector<value_type>> storage,
+        std::shared_ptr<Storage> storage,
         std::size_t offset)
         : shape_(std::move(shape)),
           strides_(std::move(strides)),
@@ -208,6 +251,73 @@ namespace synara
             throw std::out_of_range("computed offset out of storage bounds");
         }
         return linear;
+    }
+
+    void Tensor::validate_storage() const
+    {
+        if (!storage_)
+        {
+            throw std::runtime_error("tensor storage is not initialized");
+        }
+
+        if (offset_ > storage_->size())
+        {
+            throw std::out_of_range("tensor offset out of storage bounds");
+        }
+    }
+    std::string Tensor::format_recursive(size_t dim, size_t base_offset) const
+    {
+        std::ostringstream oss;
+
+        if (rank() == 0)
+        {
+            oss << storage_->data()[offset_];
+            return oss.str();
+        }
+
+        if (dim == rank() - 1)
+        {
+            oss << "[";
+            for (Dim i = 0; i < shape_[dim]; ++i)
+            {
+                const Size idx = base_offset + static_cast<Size>(i * strides_[dim]);
+                oss << storage_->data()[idx];
+                if (i + 1 < shape_[dim])
+                {
+                    oss << ", ";
+                }
+            }
+            oss << "]";
+            return oss.str();
+        }
+
+        oss << "[";
+        for (Dim i = 0; i < shape_[dim]; ++i)
+        {
+            const Size idx = base_offset + static_cast<Size>(i * strides_[dim]);
+            oss << format_recursive(dim + 1, idx);
+            if (i + 1 < shape_[dim])
+            {
+                oss << ", ";
+            }
+        }
+        oss << "]";
+        return oss.str();
+    }
+
+    std::string Tensor::to_string() const
+    {
+        std::ostringstream oss;
+        oss << "Tensor(shape=" << shape_.to_string()
+            << ", strides=" << strides_.to_string()
+            << ", data=" << format_recursive(0, offset_) << ")";
+        return oss.str();
+    }
+
+    std::ostream &operator<<(std::ostream &os, const Tensor &tensor)
+    {
+        os << tensor.to_string();
+        return os;
     }
 
 } // namespace synara

@@ -21,4 +21,11 @@ target_include_directories(synara_tensor
 )
 
 add_executable(synara tools/synara.cpp)
+
+
 target_link_libraries(synara PRIVATE synara_tensor)
+
+
+add_executable(synara_tensor_basics examples/00_tensor_basics.cpp
+)
+target_link_libraries(synara_tensor_basics PRIVATE synara_tensor)

@@ -25,6 +25,10 @@ namespace synara
             dims_.begin(), dims_.end(), static_cast<std::size_t>(1), std::multiplies<>());
     }
 
+    bool Shape::empty() const noexcept {
+        return dims_.empty();
+    }
+
     std::size_t Shape::operator[](std::size_t dim) const
     {
         if (dim >= dims_.size())

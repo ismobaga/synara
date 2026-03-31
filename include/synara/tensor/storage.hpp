@@ -14,6 +14,7 @@ namespace synara
 
         Storage();
         explicit Storage(std::size_t size);
+        Storage(std::size_t size, value_type fill_value);
         explicit Storage(std::vector<value_type> values);
 
         std::size_t size() const noexcept;

@@ -18,6 +18,8 @@ namespace synara
         const std::vector<std::size_t> &dims() const noexcept;
         std::size_t rank() const noexcept;
         std::size_t numel() const noexcept;
+        bool empty() const noexcept;
+
 
         std::size_t operator[](std::size_t dim) const;
 

@@ -10,6 +10,9 @@ namespace synara
     Storage::Storage(std::size_t size)
         : values_(std::make_shared<std::vector<value_type>>(size, 0.0)) {}
 
+    Storage::Storage(std::size_t size, value_type fill_value)
+        : values_(std::make_shared<std::vector<value_type>>(size, fill_value)) {}
+
     Storage::Storage(std::vector<value_type> values)
         : values_(std::make_shared<std::vector<value_type>>(std::move(values))) {}
 

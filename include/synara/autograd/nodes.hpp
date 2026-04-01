@@ -3,79 +3,116 @@
 #include "synara/autograd/node.hpp"
 #include "synara/tensor/tensor.hpp"
 
-namespace synara {
+namespace synara
+{
 
-class AddNode : public Node {
-public:
-    AddNode(const Tensor& a, const Tensor& b);
+    class AddNode : public Node
+    {
+    public:
+        AddNode(const Tensor &a, const Tensor &b);
 
-    void backward(const Tensor& grad_output) override;
+        void backward(const Tensor &grad_output) override;
 
-private:
-    Tensor a_;
-    Tensor b_;
-};
+    private:
+        Tensor a_;
+        Tensor b_;
+    };
 
-class SubNode : public Node {
-public:
-    SubNode(const Tensor& a, const Tensor& b);
-    void backward(const Tensor& grad_output) override;
-private:
-    Tensor a_;
-    Tensor b_;
-};
-class MulNode : public Node {
-public:
-    MulNode(const Tensor& a, const Tensor& b);
+    class SubNode : public Node
+    {
+    public:
+        SubNode(const Tensor &a, const Tensor &b);
+        void backward(const Tensor &grad_output) override;
 
-    void backward(const Tensor& grad_output) override;
+    private:
+        Tensor a_;
+        Tensor b_;
+    };
+    class MulNode : public Node
+    {
+    public:
+        MulNode(const Tensor &a, const Tensor &b);
 
-private:
-    Tensor a_;
-    Tensor b_;
-};
+        void backward(const Tensor &grad_output) override;
 
-class DivNode : public Node {
-public:
-    DivNode(const Tensor& a, const Tensor& b);
-    void backward(const Tensor& grad_output) override;
-private:
-    Tensor a_;
-    Tensor b_;
-};
+    private:
+        Tensor a_;
+        Tensor b_;
+    };
 
-class SumNode : public Node {
-public:
-    explicit SumNode(const Tensor& a);
+    class DivNode : public Node
+    {
+    public:
+        DivNode(const Tensor &a, const Tensor &b);
+        void backward(const Tensor &grad_output) override;
 
-    void backward(const Tensor& grad_output) override;
+    private:
+        Tensor a_;
+        Tensor b_;
+    };
 
-private:
-    Tensor a_;
-};
+    class SumNode : public Node
+    {
+    public:
+        explicit SumNode(const Tensor &a);
 
-class MeanNode : public Node {
-public:
-    explicit MeanNode(const Tensor& a);
+        void backward(const Tensor &grad_output) override;
 
-    void backward(const Tensor& grad_output) override;  
-private:    Tensor a_;
-};
+    private:
+        Tensor a_;
+    };
 
-class ReLUNode : public Node {
-public:
-    explicit ReLUNode(const Tensor& a);
-    void backward(const Tensor& grad_output) override;
-private:
-    Tensor a_;
-};
+    class MeanNode : public Node
+    {
+    public:
+        explicit MeanNode(const Tensor &a);
 
-class MatMulNode : public Node {
-public:
-    MatMulNode(const Tensor& a, const Tensor& b);
-    void backward(const Tensor& grad_output) override;
-private:
-    Tensor a_;
-    Tensor b_;
-};
+        void backward(const Tensor &grad_output) override;
+
+    private:
+        Tensor a_;
+    };
+
+    class ReLUNode : public Node
+    {
+    public:
+        explicit ReLUNode(const Tensor &a);
+        void backward(const Tensor &grad_output) override;
+
+    private:
+        Tensor a_;
+    };
+
+    class SigmoidNode : public Node
+    {
+    public:
+        explicit SigmoidNode(const Tensor &a);
+        void backward(const Tensor &grad_output) override;
+
+    private:
+        Tensor a_;
+    };
+
+    class MatMulNode : public Node
+    {
+    public:
+        MatMulNode(const Tensor &a, const Tensor &b);
+        void backward(const Tensor &grad_output) override;
+
+    private:
+        Tensor a_;
+        Tensor b_;
+    };
+
+    class BCENode : public Node
+    {
+    public:
+        BCENode(const Tensor &pred, const Tensor &target, Tensor::value_type eps);
+        void backward(const Tensor &grad_output) override;
+
+    private:
+        Tensor pred_;
+        Tensor target_;
+        Tensor::value_type eps_;
+    };
 } // namespace synara

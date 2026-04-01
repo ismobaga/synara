@@ -5,6 +5,7 @@
 #include "synara/nn/linear.hpp"
 #include "synara/nn/relu.hpp"
 #include "synara/nn/sequential.hpp"
+#include "synara/ops/activation.hpp"
 #include "synara/ops/loss.hpp"
 #include "synara/optim/sgd.hpp"
 
@@ -47,8 +48,9 @@ int main()
     {
         optimizer.zero_grad();
 
-        Tensor pred = model(x);
-        Tensor loss = mse_loss(pred, y);
+        Tensor logits = model(x);
+        Tensor pred = sigmoid(logits);
+        Tensor loss = binary_cross_entropy(pred, y);
         loss.backward();
         optimizer.step();
 
@@ -58,14 +60,15 @@ int main()
         }
     }
 
-    Tensor pred = model(x);
-    std::cout << "\nXOR predictions (raw):\n";
+    Tensor logits = model(x);
+    Tensor pred = sigmoid(logits);
+    std::cout << "\nXOR predictions (probabilities):\n";
     for (std::size_t i = 0; i < 4; ++i)
     {
-        const float raw = pred.at({i, 0});
-        const int cls = (raw >= 0.5f) ? 1 : 0;
+        const float prob = pred.at({i, 0});
+        const int cls = (prob >= 0.5f) ? 1 : 0;
         std::cout << "x=[" << x.at({i, 0}) << ", " << x.at({i, 1}) << "]"
-                  << " y_hat=" << raw
+                  << " p1=" << prob
                   << " class=" << cls
                   << " target=" << y.at({i, 0}) << "\n";
     }

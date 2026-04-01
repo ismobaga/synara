@@ -2,8 +2,10 @@
 
 #include "synara/tensor/tensor.hpp"
 
-namespace synara {
+namespace synara
+{
 
-Tensor relu(const Tensor& a);
+    Tensor relu(const Tensor &a);
+    Tensor sigmoid(const Tensor &a);
 
 } // namespace synara

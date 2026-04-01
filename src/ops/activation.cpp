@@ -2,23 +2,49 @@
 #include "synara/autograd/nodes.hpp"
 #include "synara/core/error.hpp"
 
-namespace synara {
+#include <cmath>
 
-Tensor relu(const Tensor& a) {
-    Tensor out = Tensor::zeros(a.shape());
+namespace synara
+{
 
-    for (Size i = 0; i < a.numel(); ++i) {
-        out.data()[i] = (a.data()[i] > 0.0f) ? a.data()[i] : 0.0f;
+    Tensor relu(const Tensor &a)
+    {
+        Tensor out = Tensor::zeros(a.shape());
+
+        for (Size i = 0; i < a.numel(); ++i)
+        {
+            out.data()[i] = (a.data()[i] > 0.0f) ? a.data()[i] : 0.0f;
+        }
+
+        out.set_leaf(!a.requires_grad());
+        out.set_requires_grad(a.requires_grad());
+        if (a.requires_grad())
+        {
+            auto node = std::make_shared<ReLUNode>(a);
+            out.set_grad_fn(node);
+        }
+
+        return out;
     }
 
-    out.set_leaf(!a.requires_grad());
-    out.set_requires_grad(a.requires_grad());
-    if (a.requires_grad()) {
-        auto node = std::make_shared<ReLUNode>(a);
-        out.set_grad_fn(node);
-    }
+    Tensor sigmoid(const Tensor &a)
+    {
+        Tensor out = Tensor::zeros(a.shape());
 
-    return out;
-}
+        for (Size i = 0; i < a.numel(); ++i)
+        {
+            out.data()[i] = 1.0f / (1.0f + std::exp(-a.data()[i]));
+        }
+
+        out.set_leaf(!a.requires_grad());
+        out.set_requires_grad(a.requires_grad());
+        if (a.requires_grad())
+        {
+            auto node = std::make_shared<SigmoidNode>(a);
+            out.set_grad_fn(node);
+        }
+
+        return out;
+    }
 
 } // namespace synara

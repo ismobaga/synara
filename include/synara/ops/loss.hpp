@@ -6,5 +6,6 @@ namespace synara
 {
 
     Tensor mse_loss(const Tensor &pred, const Tensor &target);
+    Tensor binary_cross_entropy(const Tensor &pred, const Tensor &target);
 
 } // namespace synara

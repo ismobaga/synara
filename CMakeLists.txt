@@ -13,6 +13,10 @@ add_library(synara_tensor
 	src/tensor/storage.cpp
 	src/tensor/strides.cpp
 	src/tensor/tensor.cpp
+	src/ops/elementwise.cpp
+    src/ops/reduction.cpp
+    src/ops/linalg.cpp
+    src/ops/activation.cpp
 )
 
 add_library(synara::tensor ALIAS synara_tensor)
@@ -37,6 +41,11 @@ target_link_libraries(synara PRIVATE synara_tensor)
 add_executable(synara_tensor_basics examples/00_tensor_basics.cpp
 )
 target_link_libraries(synara_tensor_basics PRIVATE synara_tensor)
+
+add_executable(synara_ops_basics
+    examples/01_ops_basics.cpp
+)
+target_link_libraries(synara_ops_basics PRIVATE synara_tensor)
 
 add_custom_target(scaffold_test
 	COMMAND /bin/sh -c "${CMAKE_COMMAND} -DTEST_NAME=\"$$TEST_NAME\" -DTESTS_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/tests\" -P \"${CMAKE_CURRENT_SOURCE_DIR}/cmake/scaffold_test.cmake\""

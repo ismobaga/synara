@@ -5,48 +5,33 @@ autograd fundamentals, and end-to-end neural network building blocks.
 
 ## Current Capabilities
 
-### Tensor Core
-
-- Shape and stride system
-- Shared storage-backed tensor views
-- Indexing and slicing
-- Reshape, transpose, flatten
-- Random tensor factory:
-	- `Tensor::uniform(shape, min, max)`
-	- `Tensor::randn(shape, mean, stddev)`
-
-### Autograd + Ops
+### Autograd Ops
 
 - Elementwise: add, sub, mul, div
-- Reductions: sum, mean
-- Linalg: matmul
-- Activations:
-	- relu
-	- leaky_relu
-	- sigmoid
-	- tanh
-	- softmax (numerically stable)
-- Losses:
-	- mse_loss
-	- binary_cross_entropy
+- Reduction: `sum`, `mean`
+- Matrix multiplication: `matmul`
+- Activations: `relu`, `sigmoid`
+- Losses: `mse_loss`, `binary_cross_entropy`
 
 ### Neural Network Modules
 
-- Linear
-- Conv2d (stride, padding, dilation, groups, bias)
-- MaxPool2d
-- AvgPool2d
-- BatchNorm1d
-- BatchNorm2d
-- Dropout
-- ReLU, Sigmoid, Tanh, LeakyReLU, Softmax
-- Sequential
+- `Linear`
+- `ReLU`
+- `Sigmoid`
+- `Sequential`
 
-### Optimization + Serialization
+### Optimizer
 
-- SGD (momentum, weight decay, max grad norm)
-- Adam (beta1/beta2, eps, weight decay, bias correction)
-- `state_dict` / `load_state_dict` support for modules
+- `SGD` with:
+	- learning rate
+	- momentum
+	- weight decay
+	- max gradient norm (clipping)
+
+### Serialization
+
+- Module `state_dict()` and `load_state_dict()`
+- File checkpoint save/load with versioned text format (`SYNARA_STATE_V1`)
 
 ## Build
 
@@ -62,26 +47,49 @@ cd build
 ctest --output-on-failure
 ```
 
+The suite includes tensor, autograd, nn, optimizer, serialization, and finite-difference gradient validation tests.
+
 ## Run Examples
 
-Examples are built as standalone executables.
-
 ```bash
-./build/synara_tensor_basics
-./build/synara_ops_basics
-./build/synara_autograd_basics
+./build/synara
 ./build/synara_linear_regression
 ./build/synara_xor_mlp
-./build/synara_conv2d_basics
-./build/synara_pooling_basics
-./build/synara_avg_pooling_basics
-./build/synara_conv2d_advanced
 ```
 
-## Project Layout
+## Minimal Training Sketch
 
-- `include/synara/`: public headers
-- `src/`: implementations
-- `tests/`: unit and finite-difference gradient tests
-- `examples/`: usage demos
-- `tools/`: CLI entrypoint
+```cpp
+using namespace synara;
+
+Linear model(1, 1, true);
+SGD optim(model.parameters(), SGDOptions{.lr = 0.05f});
+
+Tensor x = Tensor::from_vector(Shape({4, 1}), {1, 2, 3, 4});
+Tensor y = Tensor::from_vector(Shape({4, 1}), {3, 5, 7, 9});
+
+for (int epoch = 0; epoch < 300; ++epoch) {
+		Tensor pred = model(x);
+		Tensor loss = mse_loss(pred, y);
+
+		optim.zero_grad();
+		loss.backward();
+		optim.step();
+}
+```
+
+## Checkpoint Save/Load
+
+```cpp
+using namespace synara;
+
+auto state = model.state_dict();
+save_state_dict(state, "checkpoint.syn");
+
+auto loaded = load_state_dict("checkpoint.syn");
+model.load_state_dict(loaded);
+```
+
+## Status
+
+Current implementation is stable and covered by automated tests, including numerical finite-difference checks for key gradients.

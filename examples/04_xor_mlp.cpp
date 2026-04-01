@@ -5,7 +5,7 @@
 #include "synara/nn/linear.hpp"
 #include "synara/nn/relu.hpp"
 #include "synara/nn/sequential.hpp"
-#include "synara/ops/activation.hpp"
+#include "synara/nn/sigmoid.hpp"
 #include "synara/ops/loss.hpp"
 #include "synara/optim/sgd.hpp"
 
@@ -16,8 +16,9 @@ int main()
     auto l1 = std::make_shared<Linear>(2, 8, true);
     auto a1 = std::make_shared<ReLU>();
     auto l2 = std::make_shared<Linear>(8, 1, true);
+    auto a2 = std::make_shared<Sigmoid>();
 
-    Sequential model({l1, a1, l2});
+    Sequential model({l1, a1, l2, a2});
 
     Tensor x = Tensor::from_vector(
         Shape({4, 2}),
@@ -48,8 +49,7 @@ int main()
     {
         optimizer.zero_grad();
 
-        Tensor logits = model(x);
-        Tensor pred = sigmoid(logits);
+        Tensor pred = model(x);
         Tensor loss = binary_cross_entropy(pred, y);
         loss.backward();
         optimizer.step();
@@ -60,8 +60,7 @@ int main()
         }
     }
 
-    Tensor logits = model(x);
-    Tensor pred = sigmoid(logits);
+    Tensor pred = model(x);
     std::cout << "\nXOR predictions (probabilities):\n";
     for (std::size_t i = 0; i < 4; ++i)
     {

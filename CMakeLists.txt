@@ -15,12 +15,14 @@ add_library(synara_tensor
 	src/tensor/tensor.cpp
 	src/nn/module.cpp
 	src/nn/linear.cpp
+	src/nn/conv2d.cpp
 	src/nn/batch_norm.cpp
 	src/nn/dropout.cpp
 	src/nn/sequential.cpp
 	src/ops/elementwise.cpp
     src/ops/reduction.cpp
     src/ops/linalg.cpp
+	src/ops/convolution.cpp
     src/ops/activation.cpp
     src/ops/loss.cpp
     src/optim/sgd.cpp
@@ -71,6 +73,11 @@ add_executable(synara_xor_mlp
     examples/04_xor_mlp.cpp
 )
 target_link_libraries(synara_xor_mlp PRIVATE synara_tensor)
+
+add_executable(synara_conv2d_basics
+	examples/05_conv2d_basics.cpp
+)
+target_link_libraries(synara_conv2d_basics PRIVATE synara_tensor)
 
 add_custom_target(scaffold_test
 	COMMAND /bin/sh -c "${CMAKE_COMMAND} -DTEST_NAME=\"$$TEST_NAME\" -DTESTS_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/tests\" -P \"${CMAKE_CURRENT_SOURCE_DIR}/cmake/scaffold_test.cmake\""

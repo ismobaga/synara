@@ -1,3 +1,8 @@
-add_executable(test_shape test_shape.cpp)
-target_link_libraries(test_shape PRIVATE synara_tensor)
-add_test(NAME test_shape COMMAND test_shape)
+file(GLOB TEST_SOURCES CONFIGURE_DEPENDS test_*.cpp)
+
+foreach(TEST_SOURCE ${TEST_SOURCES})
+	get_filename_component(TEST_NAME ${TEST_SOURCE} NAME_WE)
+	add_executable(${TEST_NAME} ${TEST_SOURCE})
+	target_link_libraries(${TEST_NAME} PRIVATE synara_tensor)
+	add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+endforeach()

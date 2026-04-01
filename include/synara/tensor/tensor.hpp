@@ -43,6 +43,7 @@ namespace synara
 
         Tensor reshape(const Shape &new_shape) const;
         Tensor transpose(std::size_t dim0, std::size_t dim1) const;
+        Tensor flatten() const;
 
         Tensor slice(std::size_t dim, const Slice &spec) const;
         Tensor slice(const std::vector<Slice> &specs) const;

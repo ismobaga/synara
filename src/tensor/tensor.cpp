@@ -126,6 +126,11 @@ namespace synara
         return Tensor(Shape(std::move(dims)), Strides(std::move(strides)), storage_, offset_);
     }
 
+    Tensor Tensor::flatten() const
+    {
+        return reshape(Shape({numel()}));
+    }
+
     Tensor Tensor::slice(std::size_t dim, const Slice &spec) const
     {
         if (dim >= rank())

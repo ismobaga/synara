@@ -1,4 +1,8 @@
 #include "synara/tensor/tensor.hpp"
+#include "synara/autograd/node.hpp"
+#include "synara/core/error.hpp"
+#include "synara/tensor/storage.hpp"
+#include "synara/tensor/tensor_impl.hpp"
 
 #include <algorithm>
 #include <stdexcept>
@@ -41,63 +45,120 @@ namespace synara
     } // namespace
 
     Tensor::Tensor()
-        : shape_(),
-          strides_(Strides::contiguous(shape_)),
-          storage_(std::make_shared<Storage>(1, 0.0)),
-          offset_(0) {}
+        : impl_(std::make_shared<TensorImpl>()) { impl_->storage->data()[0] = 0.0f; }
 
-    Tensor::Tensor(const Shape &shape)
-        : shape_(shape),
-          strides_(Strides::contiguous(shape_)),
-          storage_(std::make_shared<Storage>(shape.numel(), 0.0)),
-          offset_(0) {}
+    Tensor::Tensor(const Shape &shape, bool requires_grad)
+        : impl_(std::make_shared<TensorImpl>(shape, Strides::contiguous(shape), std::make_shared<Storage>(shape.numel(), 0.0), 0, requires_grad, true))
+    {
+        std::fill(impl_->storage->data(), impl_->storage->data() + impl_->storage->size(), 0.0f);
+    }
 
-    Tensor::Tensor(const Shape &shape, value_type fill_value)
-        : shape_(shape),
-          strides_(Strides::contiguous(shape_)),
-          storage_(std::make_shared<Storage>(shape.numel())),
-          offset_(0)
+    Tensor::Tensor(const Shape &shape, value_type fill_value, bool requires_grad)
+        : impl_(std::make_shared<TensorImpl>(shape, Strides::contiguous(shape), std::make_shared<Storage>(shape.numel(), fill_value), 0, requires_grad, true))
+
     {
         std::fill(data(), data() + numel(), fill_value);
     }
 
-          Tensor Tensor::zeros(const Shape &shape)
-          {
-              return Tensor(shape);
-          }
+    Tensor Tensor::make_view(
+        Shape shape,
+        Strides strides,
+        std::shared_ptr<Storage> storage,
+        Size offset,
+        bool requires_grad,
+        bool is_leaf)
+    {
+        return Tensor(std::make_shared<TensorImpl>(
+            std::move(shape),
+            std::move(strides),
+            std::move(storage),
+            offset,
+            requires_grad,
+            is_leaf));
+    }
 
-          Tensor Tensor::ones(const Shape &shape)
-          {
-              return full(shape, 1.0f);
-          }
+    Tensor Tensor::zeros(const Shape &shape, bool requires_grad)
+    {
+        return Tensor(shape, requires_grad);
+    }
 
-          Tensor Tensor::full(const Shape &shape, value_type value)
-          {
-              Tensor t(shape);
-              std::fill(t.data(), t.data() + t.numel(), value);
-              return t;
-          }
-    Tensor Tensor::from_vector(const Shape &shape, std::vector<value_type> values)
+    Tensor Tensor::ones(const Shape &shape, bool requires_grad)
+    {
+        return full(shape, 1.0f, requires_grad);
+    }
+
+    Tensor Tensor::full(const Shape &shape, value_type value, bool requires_grad)
+    {
+        Tensor t(shape, value, requires_grad);
+        std::fill(t.data(), t.data() + t.numel(), value);
+        return t;
+    }
+    Tensor Tensor::from_vector(const Shape &shape, std::vector<value_type> values, bool requires_grad)
     {
         if (values.size() != shape.numel())
         {
             throw std::invalid_argument("from_vector values do not match shape numel");
         }
-        return Tensor(shape, Strides::contiguous(shape),
-                      std::make_shared<Storage>(std::move(values)), 0);
+        return make_view(shape, Strides::contiguous(shape),
+                         std::make_shared<Storage>(std::move(values)), 0, requires_grad, true);
     }
 
-    const Shape &Tensor::shape() const noexcept { return shape_; }
+    const Shape &Tensor::shape() const noexcept { return impl_->shape; }
 
-    const Strides &Tensor::strides() const noexcept { return strides_; }
+    const Strides &Tensor::strides() const noexcept { return impl_->strides; }
 
-    std::size_t Tensor::rank() const noexcept { return shape_.rank(); }
+    std::size_t Tensor::rank() const noexcept { return impl_->shape.rank(); }
 
-    std::size_t Tensor::numel() const noexcept { return shape_.numel(); }
+    std::size_t Tensor::numel() const noexcept { return impl_->shape.numel(); }
 
-    bool Tensor::is_contiguous() const { return strides_.is_contiguous(shape_); }
+    bool Tensor::is_contiguous() const { return impl_->strides.is_contiguous(impl_->shape); }
     bool Tensor::is_scalar() const noexcept { return numel() == 1; }
 
+    bool Tensor::requires_grad() const noexcept
+    {
+        return impl_->requires_grad;
+    }
+    bool Tensor::is_leaf() const noexcept
+    {
+        return impl_->is_leaf;
+    }
+
+    void Tensor::set_requires_grad(bool value) noexcept
+    {
+        impl_->requires_grad = value;
+    }
+
+    void Tensor::set_leaf(bool value) noexcept
+    {
+        impl_->is_leaf = value;
+    }
+
+    const Tensor &Tensor::grad() const
+    {
+        if (!impl_->grad)
+        {
+            throw ValueError("grad(): tensor has no gradient.");
+        }
+        return *impl_->grad;
+    }
+    Tensor &Tensor::grad()
+    {
+        if (!impl_->grad)
+        {
+            throw ValueError("grad(): tensor has no gradient.");
+        }
+        return *impl_->grad;
+    }
+
+    void Tensor::zero_grad()
+    {
+        if (!impl_->grad)
+        {
+            return;
+        }
+
+        std::fill(impl_->grad->data(), impl_->grad->data() + impl_->grad->numel(), 0.0f);
+    }
     Tensor Tensor::reshape(const Shape &new_shape) const
     {
         if (new_shape.numel() != numel())
@@ -108,7 +169,14 @@ namespace synara
         {
             throw std::invalid_argument("reshape requires contiguous tensor");
         }
-        return Tensor(new_shape, Strides::contiguous(new_shape), storage_, offset_);
+
+        return make_view(
+            new_shape,
+            Strides::contiguous(new_shape),
+            impl_->storage,
+            impl_->offset,
+            requires_grad(),
+            false);
     }
 
     Tensor Tensor::transpose(std::size_t dim0, std::size_t dim1) const
@@ -118,17 +186,85 @@ namespace synara
             throw std::out_of_range("transpose dimension out of range");
         }
 
-        std::vector<std::size_t> dims = shape_.dims();
-        std::vector<std::size_t> strides = strides_.values();
+        std::vector<std::size_t> dims = impl_->shape.dims();
+        std::vector<std::size_t> strides = impl_->strides.values();
         std::swap(dims[dim0], dims[dim1]);
         std::swap(strides[dim0], strides[dim1]);
 
-        return Tensor(Shape(std::move(dims)), Strides(std::move(strides)), storage_, offset_);
+        return make_view(
+            Shape(std::move(dims)),
+            Strides(std::move(strides)),
+            impl_->storage,
+            impl_->offset,
+            impl_->requires_grad,
+            impl_->is_leaf);
     }
 
     Tensor Tensor::flatten() const
     {
         return reshape(Shape({numel()}));
+    }
+
+    bool Tensor::has_grad() const noexcept { return impl_->grad != nullptr; }
+
+    void Tensor::set_grad(const Tensor &grad_tensor)
+    {
+        if (grad_tensor.shape() != shape())
+        {
+            throw ShapeError("set_grad(): gradient shape must match tensor shape.");
+        }
+
+        impl_->grad = std::make_shared<Tensor>(Tensor::from_vector(shape(), std::vector<value_type>(
+                                                                                grad_tensor.data(), grad_tensor.data() + grad_tensor.numel())));
+    }
+
+    void Tensor::accumulate_grad(const Tensor &grad_tensor)
+    {
+        if (grad_tensor.shape() != shape())
+        {
+            throw ShapeError("accumulate_grad(): gradient shape must match tensor shape.");
+        }
+
+        if (!impl_->grad)
+        {
+            impl_->grad = std::make_shared<Tensor>(Tensor::zeros(shape(), false));
+        }
+
+        for (Size i = 0; i < numel(); ++i)
+        {
+            impl_->grad->data()[i] += grad_tensor.data()[i];
+        }
+    }
+
+    void Tensor::set_grad_fn(std::shared_ptr<Node> fn) noexcept
+    {
+        impl_->grad_fn = std::move(fn);
+    }
+
+    std::shared_ptr<Node> Tensor::grad_fn() const noexcept
+    {
+        return impl_->grad_fn;
+    }
+
+    void Tensor::backward()
+    {
+        if (!requires_grad())
+        {
+            throw ValueError("backward(): tensor does not require grad.");
+        }
+
+        if (!is_scalar())
+        {
+            throw ValueError("backward(): only scalar tensors supported in Milestone 3B.");
+        }
+
+        Tensor seed = Tensor::from_vector(Shape({}), {1.0f}, false);
+        accumulate_grad(seed);
+
+        if (impl_->grad_fn)
+        {
+            impl_->grad_fn->backward(seed);
+        }
     }
 
     Tensor Tensor::slice(std::size_t dim, const Slice &spec) const
@@ -154,9 +290,9 @@ namespace synara
             throw std::invalid_argument("too many slice specs");
         }
 
-        std::vector<std::size_t> new_dims = shape_.dims();
-        std::vector<std::size_t> new_strides = strides_.values();
-        std::size_t new_offset = offset_;
+        std::vector<std::size_t> new_dims = impl_->shape.dims();
+        std::vector<std::size_t> new_strides = impl_->strides.values();
+        std::size_t new_offset = impl_->offset;
 
         for (std::size_t dim = 0; dim < specs.size(); ++dim)
         {
@@ -166,7 +302,7 @@ namespace synara
                 throw std::invalid_argument("slice step must be positive");
             }
 
-            const std::size_t dim_size = shape_[dim];
+            const std::size_t dim_size = impl_->shape[dim];
             const std::size_t start =
                 spec.start.has_value() ? normalize_bound(*spec.start, dim_size) : 0;
             const std::size_t stop =
@@ -178,20 +314,20 @@ namespace synara
             new_dims[dim] = slice_length(start, stop, step);
         }
 
-        return Tensor(Shape(std::move(new_dims)), Strides(std::move(new_strides)), storage_,
-                      new_offset);
+        return make_view(Shape(std::move(new_dims)), Strides(std::move(new_strides)), impl_->storage,
+                         new_offset, impl_->requires_grad, impl_->is_leaf);
     }
 
     Tensor::value_type *Tensor::data() noexcept
     {
         validate_storage();
-        return storage_->data() + offset_;
+        return impl_->storage->data() + impl_->offset;
     }
 
     const Tensor::value_type *Tensor::data() const noexcept
     {
         validate_storage();
-        return storage_->data() + offset_;
+        return impl_->storage->data() + impl_->offset;
     }
 
     Tensor::value_type Tensor::item() const
@@ -205,12 +341,12 @@ namespace synara
 
     Tensor::value_type &Tensor::at(const std::vector<std::size_t> &indices)
     {
-        return (*storage_)[compute_offset(indices)];
+        return impl_->storage->data()[compute_offset(indices)];
     }
 
     const Tensor::value_type &Tensor::at(const std::vector<std::size_t> &indices) const
     {
-        return (*storage_)[compute_offset(indices)];
+        return (*impl_->storage)[compute_offset(indices)];
     }
 
     Tensor::value_type &Tensor::operator()(std::initializer_list<std::size_t> indices)
@@ -225,14 +361,8 @@ namespace synara
     }
 
     Tensor::Tensor(
-        Shape shape,
-        Strides strides,
-        std::shared_ptr<Storage> storage,
-        std::size_t offset)
-        : shape_(std::move(shape)),
-          strides_(std::move(strides)),
-          storage_(std::move(storage)),
-          offset_(offset) {}
+        std::shared_ptr<TensorImpl> impl)
+        : impl_(std::move(impl)) {}
 
     std::size_t Tensor::compute_offset(const std::vector<std::size_t> &indices) const
     {
@@ -241,17 +371,17 @@ namespace synara
             throw std::invalid_argument("indices rank mismatch");
         }
 
-        std::size_t linear = offset_;
+        std::size_t linear = impl_->offset;
         for (std::size_t dim = 0; dim < indices.size(); ++dim)
         {
-            if (indices[dim] >= shape_[dim])
+            if (indices[dim] >= impl_->shape[dim])
             {
                 throw std::out_of_range("index out of bounds");
             }
-            linear += indices[dim] * strides_[dim];
+            linear += indices[dim] * impl_->strides[dim];
         }
 
-        if (linear >= storage_->size())
+        if (linear >= impl_->storage->size())
         {
             throw std::out_of_range("computed offset out of storage bounds");
         }
@@ -260,12 +390,12 @@ namespace synara
 
     void Tensor::validate_storage() const
     {
-        if (!storage_)
+        if (!impl_->storage)
         {
             throw std::runtime_error("tensor storage is not initialized");
         }
 
-        if (offset_ > storage_->size())
+        if (impl_->offset > impl_->storage->size())
         {
             throw std::out_of_range("tensor offset out of storage bounds");
         }
@@ -276,18 +406,18 @@ namespace synara
 
         if (rank() == 0)
         {
-            oss << storage_->data()[offset_];
+            oss << impl_->storage->data()[impl_->offset];
             return oss.str();
         }
 
         if (dim == rank() - 1)
         {
             oss << "[";
-            for (Dim i = 0; i < shape_[dim]; ++i)
+            for (Dim i = 0; i < impl_->shape[dim]; ++i)
             {
-                const Size idx = base_offset + static_cast<Size>(i * strides_[dim]);
-                oss << storage_->data()[idx];
-                if (i + 1 < shape_[dim])
+                const Size idx = base_offset + static_cast<Size>(i * impl_->strides[dim]);
+                oss << impl_->storage->data()[idx];
+                if (i + 1 < impl_->shape[dim])
                 {
                     oss << ", ";
                 }
@@ -297,11 +427,11 @@ namespace synara
         }
 
         oss << "[";
-        for (Dim i = 0; i < shape_[dim]; ++i)
+        for (Dim i = 0; i < impl_->shape[dim]; ++i)
         {
-            const Size idx = base_offset + static_cast<Size>(i * strides_[dim]);
+            const Size idx = base_offset + static_cast<Size>(i * impl_->strides[dim]);
             oss << format_recursive(dim + 1, idx);
-            if (i + 1 < shape_[dim])
+            if (i + 1 < impl_->shape[dim])
             {
                 oss << ", ";
             }
@@ -313,9 +443,9 @@ namespace synara
     std::string Tensor::to_string() const
     {
         std::ostringstream oss;
-        oss << "Tensor(shape=" << shape_.to_string()
-            << ", strides=" << strides_.to_string()
-            << ", data=" << format_recursive(0, offset_) << ")";
+        oss << "Tensor(shape=" << impl_->shape.to_string()
+            << ", strides=" << impl_->strides.to_string()
+            << ", data=" << format_recursive(0, impl_->offset) << ")";
         return oss.str();
     }
 

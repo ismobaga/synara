@@ -17,6 +17,7 @@ add_library(synara_tensor
     src/ops/reduction.cpp
     src/ops/linalg.cpp
     src/ops/activation.cpp
+	src/autograd/nodes.cpp
 )
 
 add_library(synara::tensor ALIAS synara_tensor)
@@ -46,6 +47,12 @@ add_executable(synara_ops_basics
     examples/01_ops_basics.cpp
 )
 target_link_libraries(synara_ops_basics PRIVATE synara_tensor)
+
+
+add_executable(synara_autograd_basics
+    examples/02_autograd_basics.cpp
+)
+target_link_libraries(synara_autograd_basics PRIVATE synara_tensor)
 
 add_custom_target(scaffold_test
 	COMMAND /bin/sh -c "${CMAKE_COMMAND} -DTEST_NAME=\"$$TEST_NAME\" -DTESTS_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/tests\" -P \"${CMAKE_CURRENT_SOURCE_DIR}/cmake/scaffold_test.cmake\""

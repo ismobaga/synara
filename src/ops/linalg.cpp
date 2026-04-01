@@ -1,5 +1,5 @@
 #include "synara/ops/linalg.hpp"
-
+#include "synara/autograd/nodes.hpp"
 #include "synara/core/error.hpp"
 
 namespace synara {
@@ -28,6 +28,14 @@ Tensor matmul(const Tensor& a, const Tensor& b) {
             }
             out.at({i, j}) = acc;
         }
+    }
+
+    bool req = a.requires_grad() || b.requires_grad();
+    out.set_leaf(!req);
+    out.set_requires_grad(req);
+    if (req) {
+        auto node = std::make_shared<MatMulNode>(a, b);
+        out.set_grad_fn(node);
     }
 
     return out;

@@ -8,10 +8,13 @@
 
 #include "synara/core/types.hpp"
 #include "synara/core/error.hpp"
+#include "synara/autograd/node.hpp"
 #include "synara/tensor/shape.hpp"
-#include "synara/tensor/slice.hpp"
-#include "synara/tensor/storage.hpp"
 #include "synara/tensor/strides.hpp"
+#include "synara/tensor/storage.hpp"
+#include "synara/tensor/slice.hpp"
+
+#include "synara/tensor/tensor_impl.hpp"
 
 namespace synara
 {
@@ -22,13 +25,13 @@ namespace synara
         using value_type = Storage::value_type;
 
         Tensor();
-        explicit Tensor(const Shape &shape);
-        Tensor(const Shape &shape, value_type fill_value);
+        explicit Tensor(const Shape &shape, bool requires_grad = false);
+        Tensor(const Shape &shape, value_type fill_value, bool requires_grad = false);
 
-        static Tensor zeros(const Shape &shape);
-        static Tensor ones(const Shape &shape);
-        static Tensor full(const Shape &shape, value_type value);
-        static Tensor from_vector(const Shape &shape, std::vector<value_type> values);
+        static Tensor zeros(const Shape &shape, bool requires_grad = false);
+        static Tensor ones(const Shape &shape, bool requires_grad = false);
+        static Tensor full(const Shape &shape, value_type value, bool requires_grad = false);
+        static Tensor from_vector(const Shape &shape, std::vector<value_type> values, bool requires_grad = false);
 
         const Shape &shape() const noexcept;
         const Strides &strides() const noexcept;
@@ -37,6 +40,20 @@ namespace synara
         std::size_t numel() const noexcept;
         bool is_contiguous() const;
         bool is_scalar() const noexcept;
+        // Autograd API
+        bool requires_grad() const noexcept;
+        bool is_leaf() const noexcept;
+        bool has_grad() const noexcept;
+        void accumulate_grad(const Tensor &grad);
+        const Tensor &grad() const;
+        Tensor &grad();
+        void set_grad(const Tensor &grad_tensor);
+        void set_requires_grad(bool value) noexcept;
+
+        void set_leaf(bool value) noexcept;
+        void zero_grad();
+
+        void backward();
 
         value_type *data() noexcept;
         const value_type *data() const noexcept;
@@ -50,7 +67,6 @@ namespace synara
 
         value_type item() const;
 
-
         value_type &at(const std::vector<std::size_t> &indices);
         const value_type &at(const std::vector<std::size_t> &indices) const;
 
@@ -59,13 +75,19 @@ namespace synara
 
         std::string to_string() const;
 
+        void set_grad_fn(std::shared_ptr<Node> fn) noexcept;
+        std::shared_ptr<Node> grad_fn() const noexcept;
 
     private:
-        Tensor(
+        explicit Tensor(std::shared_ptr<TensorImpl> impl);
+
+        static Tensor make_view(
             Shape shape,
             Strides strides,
             std::shared_ptr<Storage> storage,
-            std::size_t offset);
+            Size offset,
+            bool requires_grad,
+            bool is_leaf);
 
         std::size_t compute_offset(const std::vector<std::size_t> &indices) const;
 
@@ -73,12 +95,10 @@ namespace synara
 
         std::string format_recursive(size_t dim, size_t base_offset) const;
 
-        Shape shape_;
-        Strides strides_;
-        std::shared_ptr<Storage> storage_;
-        std::size_t offset_ = 0;
+    private:
+        std::shared_ptr<TensorImpl> impl_;
     };
 
-    std::ostream& operator<<(std::ostream& os, const Tensor& tensor);
+    std::ostream &operator<<(std::ostream &os, const Tensor &tensor);
 
 } // namespace synara

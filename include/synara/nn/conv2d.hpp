@@ -17,7 +17,10 @@ namespace synara
                Size stride_w = 1,
                Size pad_h = 0,
                Size pad_w = 0,
-               bool use_bias = true);
+             bool use_bias = true,
+             Size dilation_h = 1,
+             Size dilation_w = 1,
+             Size groups = 1);
 
         Tensor forward(const Tensor &input) override;
         std::vector<Parameter *> parameters() override;
@@ -38,6 +41,9 @@ namespace synara
         Size stride_w() const noexcept;
         Size pad_h() const noexcept;
         Size pad_w() const noexcept;
+        Size dilation_h() const noexcept;
+        Size dilation_w() const noexcept;
+        Size groups() const noexcept;
         bool has_bias() const noexcept;
 
     private:
@@ -52,6 +58,9 @@ namespace synara
         Size stride_w_;
         Size pad_h_;
         Size pad_w_;
+        Size dilation_h_;
+        Size dilation_w_;
+        Size groups_;
         bool use_bias_;
 
         Parameter weight_;

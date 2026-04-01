@@ -16,6 +16,9 @@ namespace synara
             Size stride_w;
             Size pad_h;
             Size pad_w;
+            Size dilation_h;
+            Size dilation_w;
+            Size groups;
         };
 
         bool valid_bias_shape(const Tensor &bias, Size out_channels)
@@ -55,13 +58,14 @@ namespace synara
             void backward(const Tensor &grad_output) override
             {
                 const Size n = input_.shape()[0];
-                const Size c_in = input_.shape()[1];
                 const Size h_in = input_.shape()[2];
                 const Size w_in = input_.shape()[3];
 
                 const Size c_out = weight_.shape()[0];
+                const Size c_in_per_group = weight_.shape()[1];
                 const Size k_h = weight_.shape()[2];
                 const Size k_w = weight_.shape()[3];
+                const Size c_out_per_group = c_out / cfg_.groups;
 
                 const Size h_out = grad_output.shape()[2];
                 const Size w_out = grad_output.shape()[3];
@@ -74,16 +78,19 @@ namespace synara
                     {
                         for (Size co = 0; co < c_out; ++co)
                         {
+                            const Size gidx = co / c_out_per_group;
+                            const Size ci_start = gidx * c_in_per_group;
                             for (Size oh = 0; oh < h_out; ++oh)
                             {
                                 for (Size ow = 0; ow < w_out; ++ow)
                                 {
                                     const Tensor::value_type g = grad_output.at({b, co, oh, ow});
-                                    for (Size ci = 0; ci < c_in; ++ci)
+                                    for (Size ci_local = 0; ci_local < c_in_per_group; ++ci_local)
                                     {
+                                        const Size ci = ci_start + ci_local;
                                         for (Size kh = 0; kh < k_h; ++kh)
                                         {
-                                            const long long ih = static_cast<long long>(oh * cfg_.stride_h + kh) - static_cast<long long>(cfg_.pad_h);
+                                            const long long ih = static_cast<long long>(oh * cfg_.stride_h + kh * cfg_.dilation_h) - static_cast<long long>(cfg_.pad_h);
                                             if (ih < 0 || ih >= static_cast<long long>(h_in))
                                             {
                                                 continue;
@@ -91,14 +98,14 @@ namespace synara
 
                                             for (Size kw = 0; kw < k_w; ++kw)
                                             {
-                                                const long long iw = static_cast<long long>(ow * cfg_.stride_w + kw) - static_cast<long long>(cfg_.pad_w);
+                                                const long long iw = static_cast<long long>(ow * cfg_.stride_w + kw * cfg_.dilation_w) - static_cast<long long>(cfg_.pad_w);
                                                 if (iw < 0 || iw >= static_cast<long long>(w_in))
                                                 {
                                                     continue;
                                                 }
 
                                                 grad_input.at({b, ci, static_cast<Size>(ih), static_cast<Size>(iw)}) +=
-                                                    g * weight_.at({co, ci, kh, kw});
+                                                    g * weight_.at({co, ci_local, kh, kw});
                                             }
                                         }
                                     }
@@ -122,16 +129,19 @@ namespace synara
                     {
                         for (Size co = 0; co < c_out; ++co)
                         {
+                            const Size gidx = co / c_out_per_group;
+                            const Size ci_start = gidx * c_in_per_group;
                             for (Size oh = 0; oh < h_out; ++oh)
                             {
                                 for (Size ow = 0; ow < w_out; ++ow)
                                 {
                                     const Tensor::value_type g = grad_output.at({b, co, oh, ow});
-                                    for (Size ci = 0; ci < c_in; ++ci)
+                                    for (Size ci_local = 0; ci_local < c_in_per_group; ++ci_local)
                                     {
+                                        const Size ci = ci_start + ci_local;
                                         for (Size kh = 0; kh < k_h; ++kh)
                                         {
-                                            const long long ih = static_cast<long long>(oh * cfg_.stride_h + kh) - static_cast<long long>(cfg_.pad_h);
+                                            const long long ih = static_cast<long long>(oh * cfg_.stride_h + kh * cfg_.dilation_h) - static_cast<long long>(cfg_.pad_h);
                                             if (ih < 0 || ih >= static_cast<long long>(h_in))
                                             {
                                                 continue;
@@ -139,13 +149,13 @@ namespace synara
 
                                             for (Size kw = 0; kw < k_w; ++kw)
                                             {
-                                                const long long iw = static_cast<long long>(ow * cfg_.stride_w + kw) - static_cast<long long>(cfg_.pad_w);
+                                                const long long iw = static_cast<long long>(ow * cfg_.stride_w + kw * cfg_.dilation_w) - static_cast<long long>(cfg_.pad_w);
                                                 if (iw < 0 || iw >= static_cast<long long>(w_in))
                                                 {
                                                     continue;
                                                 }
 
-                                                grad_weight.at({co, ci, kh, kw}) +=
+                                                grad_weight.at({co, ci_local, kh, kw}) +=
                                                     g * input_.at({b, ci, static_cast<Size>(ih), static_cast<Size>(iw)});
                                             }
                                         }
@@ -205,7 +215,7 @@ namespace synara
             Conv2dConfig cfg_;
         };
 
-        void validate_conv2d_shapes(const Tensor &input, const Tensor &weight)
+        void validate_conv2d_shapes(const Tensor &input, const Tensor &weight, const Conv2dConfig &cfg)
         {
             if (input.rank() != 4)
             {
@@ -213,11 +223,28 @@ namespace synara
             }
             if (weight.rank() != 4)
             {
-                throw ShapeError("conv2d(): weight must be rank 4 (C_out, C_in, K_h, K_w).");
+                throw ShapeError("conv2d(): weight must be rank 4 (C_out, C_in/groups, K_h, K_w).");
             }
-            if (input.shape()[1] != weight.shape()[1])
+            if (cfg.groups == 0)
             {
-                throw ShapeError("conv2d(): input channels must match weight channels.");
+                throw ValueError("conv2d(): groups must be >= 1.");
+            }
+
+            const Size c_in = input.shape()[1];
+            const Size c_out = weight.shape()[0];
+            const Size c_in_per_group = weight.shape()[1];
+
+            if (c_in_per_group == 0)
+            {
+                throw ShapeError("conv2d(): weight input channels per group must be > 0.");
+            }
+            if (c_in != c_in_per_group * cfg.groups)
+            {
+                throw ShapeError("conv2d(): input channels must match weight channels * groups.");
+            }
+            if (c_out % cfg.groups != 0)
+            {
+                throw ShapeError("conv2d(): output channels must be divisible by groups.");
             }
         }
 
@@ -226,11 +253,15 @@ namespace synara
                            const Tensor *bias,
                            Conv2dConfig cfg)
         {
-            validate_conv2d_shapes(input, weight);
+            validate_conv2d_shapes(input, weight, cfg);
 
             if (cfg.stride_h == 0 || cfg.stride_w == 0)
             {
                 throw ValueError("conv2d(): stride must be >= 1.");
+            }
+            if (cfg.dilation_h == 0 || cfg.dilation_w == 0)
+            {
+                throw ValueError("conv2d(): dilation must be >= 1.");
             }
 
             const Size n = input.shape()[0];
@@ -239,23 +270,29 @@ namespace synara
             const Size w_in = input.shape()[3];
 
             const Size c_out = weight.shape()[0];
+            const Size c_in_per_group = weight.shape()[1];
             const Size k_h = weight.shape()[2];
             const Size k_w = weight.shape()[3];
+            const Size c_out_per_group = c_out / cfg.groups;
+
+            (void)c_in;
 
             const Size padded_h = h_in + 2 * cfg.pad_h;
             const Size padded_w = w_in + 2 * cfg.pad_w;
+            const Size eff_kh = cfg.dilation_h * (k_h - 1) + 1;
+            const Size eff_kw = cfg.dilation_w * (k_w - 1) + 1;
 
             if (k_h == 0 || k_w == 0)
             {
                 throw ShapeError("conv2d(): kernel spatial dims must be > 0.");
             }
-            if (padded_h < k_h || padded_w < k_w)
+            if (padded_h < eff_kh || padded_w < eff_kw)
             {
                 throw ShapeError("conv2d(): kernel larger than padded input.");
             }
 
-            const Size h_out = (padded_h - k_h) / cfg.stride_h + 1;
-            const Size w_out = (padded_w - k_w) / cfg.stride_w + 1;
+            const Size h_out = (padded_h - eff_kh) / cfg.stride_h + 1;
+            const Size w_out = (padded_w - eff_kw) / cfg.stride_w + 1;
 
             if (bias != nullptr && !valid_bias_shape(*bias, c_out))
             {
@@ -272,16 +309,19 @@ namespace synara
             {
                 for (Size co = 0; co < c_out; ++co)
                 {
+                    const Size gidx = co / c_out_per_group;
+                    const Size ci_start = gidx * c_in_per_group;
                     for (Size oh = 0; oh < h_out; ++oh)
                     {
                         for (Size ow = 0; ow < w_out; ++ow)
                         {
                             Tensor::value_type acc = 0.0f;
-                            for (Size ci = 0; ci < c_in; ++ci)
+                            for (Size ci_local = 0; ci_local < c_in_per_group; ++ci_local)
                             {
+                                const Size ci = ci_start + ci_local;
                                 for (Size kh = 0; kh < k_h; ++kh)
                                 {
-                                    const long long ih = static_cast<long long>(oh * cfg.stride_h + kh) - static_cast<long long>(cfg.pad_h);
+                                    const long long ih = static_cast<long long>(oh * cfg.stride_h + kh * cfg.dilation_h) - static_cast<long long>(cfg.pad_h);
                                     if (ih < 0 || ih >= static_cast<long long>(h_in))
                                     {
                                         continue;
@@ -289,14 +329,14 @@ namespace synara
 
                                     for (Size kw = 0; kw < k_w; ++kw)
                                     {
-                                        const long long iw = static_cast<long long>(ow * cfg.stride_w + kw) - static_cast<long long>(cfg.pad_w);
+                                        const long long iw = static_cast<long long>(ow * cfg.stride_w + kw * cfg.dilation_w) - static_cast<long long>(cfg.pad_w);
                                         if (iw < 0 || iw >= static_cast<long long>(w_in))
                                         {
                                             continue;
                                         }
 
                                         acc += input.at({b, ci, static_cast<Size>(ih), static_cast<Size>(iw)}) *
-                                               weight.at({co, ci, kh, kw});
+                                               weight.at({co, ci_local, kh, kw});
                                     }
                                 }
                             }
@@ -335,9 +375,12 @@ namespace synara
                   Size stride_h,
                   Size stride_w,
                   Size pad_h,
-                  Size pad_w)
+                  Size pad_w,
+                  Size dilation_h,
+                  Size dilation_w,
+                  Size groups)
     {
-        return conv2d_impl(input, weight, nullptr, {stride_h, stride_w, pad_h, pad_w});
+        return conv2d_impl(input, weight, nullptr, {stride_h, stride_w, pad_h, pad_w, dilation_h, dilation_w, groups});
     }
 
     Tensor conv2d(const Tensor &input,
@@ -346,9 +389,12 @@ namespace synara
                   Size stride_h,
                   Size stride_w,
                   Size pad_h,
-                  Size pad_w)
+                  Size pad_w,
+                  Size dilation_h,
+                  Size dilation_w,
+                  Size groups)
     {
-        return conv2d_impl(input, weight, &bias, {stride_h, stride_w, pad_h, pad_w});
+        return conv2d_impl(input, weight, &bias, {stride_h, stride_w, pad_h, pad_w, dilation_h, dilation_w, groups});
     }
 
 } // namespace synara

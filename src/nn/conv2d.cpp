@@ -18,7 +18,10 @@ namespace synara
                    Size stride_w,
                    Size pad_h,
                    Size pad_w,
-                   bool use_bias)
+                                     bool use_bias,
+                                     Size dilation_h,
+                                     Size dilation_w,
+                                     Size groups)
         : in_channels_(in_channels),
           out_channels_(out_channels),
           kernel_h_(kernel_h),
@@ -27,6 +30,9 @@ namespace synara
           stride_w_(stride_w),
           pad_h_(pad_h),
           pad_w_(pad_w),
+                    dilation_h_(dilation_h),
+                    dilation_w_(dilation_w),
+                    groups_(groups),
           use_bias_(use_bias),
           weight_(make_weight()),
           bias_(make_bias())
@@ -43,6 +49,22 @@ namespace synara
         {
             throw ValueError("Conv2d::Conv2d(): stride must be >= 1.");
         }
+        if (dilation_h_ == 0 || dilation_w_ == 0)
+        {
+            throw ValueError("Conv2d::Conv2d(): dilation must be >= 1.");
+        }
+        if (groups_ == 0)
+        {
+            throw ValueError("Conv2d::Conv2d(): groups must be >= 1.");
+        }
+        if (in_channels_ % groups_ != 0)
+        {
+            throw ValueError("Conv2d::Conv2d(): in_channels must be divisible by groups.");
+        }
+        if (out_channels_ % groups_ != 0)
+        {
+            throw ValueError("Conv2d::Conv2d(): out_channels must be divisible by groups.");
+        }
     }
 
     Tensor Conv2d::forward(const Tensor &input)
@@ -58,9 +80,26 @@ namespace synara
 
         if (use_bias_)
         {
-            return conv2d(input, weight_.tensor(), bias_.tensor(), stride_h_, stride_w_, pad_h_, pad_w_);
+            return conv2d(input,
+                          weight_.tensor(),
+                          bias_.tensor(),
+                          stride_h_,
+                          stride_w_,
+                          pad_h_,
+                          pad_w_,
+                          dilation_h_,
+                          dilation_w_,
+                          groups_);
         }
-        return conv2d(input, weight_.tensor(), stride_h_, stride_w_, pad_h_, pad_w_);
+        return conv2d(input,
+                      weight_.tensor(),
+                      stride_h_,
+                      stride_w_,
+                      pad_h_,
+                      pad_w_,
+                      dilation_h_,
+                      dilation_w_,
+                      groups_);
     }
 
     std::vector<Parameter *> Conv2d::parameters()
@@ -181,6 +220,21 @@ namespace synara
         return pad_w_;
     }
 
+    Size Conv2d::dilation_h() const noexcept
+    {
+        return dilation_h_;
+    }
+
+    Size Conv2d::dilation_w() const noexcept
+    {
+        return dilation_w_;
+    }
+
+    Size Conv2d::groups() const noexcept
+    {
+        return groups_;
+    }
+
     bool Conv2d::has_bias() const noexcept
     {
         return use_bias_;
@@ -188,16 +242,17 @@ namespace synara
 
     Parameter Conv2d::make_weight() const
     {
-        Tensor tensor = Tensor::zeros(Shape({out_channels_, in_channels_, kernel_h_, kernel_w_}), true);
+        const Size in_per_group = in_channels_ / groups_;
+        Tensor tensor = Tensor::zeros(Shape({out_channels_, in_per_group, kernel_h_, kernel_w_}), true);
         for (Size co = 0; co < out_channels_; ++co)
         {
-            for (Size ci = 0; ci < in_channels_; ++ci)
+            for (Size ci = 0; ci < in_per_group; ++ci)
             {
                 for (Size kh = 0; kh < kernel_h_; ++kh)
                 {
                     for (Size kw = 0; kw < kernel_w_; ++kw)
                     {
-                        const Size flat = ((co * in_channels_ + ci) * kernel_h_ + kh) * kernel_w_ + kw;
+                        const Size flat = ((co * in_per_group + ci) * kernel_h_ + kh) * kernel_w_ + kw;
                         const long long centered = static_cast<long long>(flat % 7) - 3;
                         tensor.at({co, ci, kh, kw}) = static_cast<Tensor::value_type>(0.05f * centered);
                     }

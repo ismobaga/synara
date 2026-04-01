@@ -83,6 +83,17 @@ namespace synara
         Tensor a_;
     };
 
+    class LeakyReLUNode : public Node
+    {
+    public:
+        LeakyReLUNode(const Tensor &a, Tensor::value_type negative_slope);
+        void backward(const Tensor &grad_output) override;
+
+    private:
+        Tensor a_;
+        Tensor::value_type negative_slope_;
+    };
+
     class SigmoidNode : public Node
     {
     public:
@@ -91,6 +102,28 @@ namespace synara
 
     private:
         Tensor a_;
+    };
+
+    class TanhNode : public Node
+    {
+    public:
+        explicit TanhNode(const Tensor &a);
+        void backward(const Tensor &grad_output) override;
+
+    private:
+        Tensor a_;
+    };
+
+    class SoftmaxNode : public Node
+    {
+    public:
+        SoftmaxNode(const Tensor &a, int dim, const Tensor &output);
+        void backward(const Tensor &grad_output) override;
+
+    private:
+        Tensor a_;
+        int dim_;
+        Tensor output_;
     };
 
     class MatMulNode : public Node

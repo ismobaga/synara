@@ -197,6 +197,32 @@ namespace synara
         }
     }
 
+    LeakyReLUNode::LeakyReLUNode(const Tensor &a, Tensor::value_type negative_slope)
+        : a_(a), negative_slope_(negative_slope) {}
+
+    void LeakyReLUNode::backward(const Tensor &grad_output)
+    {
+        if (!a_.requires_grad())
+        {
+            return;
+        }
+
+        Tensor grad_a = grad_output;
+        for (Size i = 0; i < a_.numel(); ++i)
+        {
+            if (a_.data()[i] <= 0.0f)
+            {
+                grad_a.data()[i] = grad_output.data()[i] * negative_slope_;
+            }
+        }
+
+        a_.accumulate_grad(grad_a);
+        if (a_.grad_fn())
+        {
+            a_.grad_fn()->backward(grad_a);
+        }
+    }
+
     SigmoidNode::SigmoidNode(const Tensor &a)
         : a_(a) {}
 
@@ -212,6 +238,78 @@ namespace synara
         {
             const Tensor::value_type s = 1.0f / (1.0f + std::exp(-a_.data()[i]));
             grad_a.data()[i] = grad_output.data()[i] * s * (1.0f - s);
+        }
+
+        a_.accumulate_grad(grad_a);
+        if (a_.grad_fn())
+        {
+            a_.grad_fn()->backward(grad_a);
+        }
+    }
+
+    TanhNode::TanhNode(const Tensor &a)
+        : a_(a) {}
+
+    void TanhNode::backward(const Tensor &grad_output)
+    {
+        if (!a_.requires_grad())
+        {
+            return;
+        }
+
+        Tensor grad_a = Tensor::zeros(a_.shape(), false);
+        for (Size i = 0; i < a_.numel(); ++i)
+        {
+            const Tensor::value_type t = std::tanh(a_.data()[i]);
+            grad_a.data()[i] = grad_output.data()[i] * (1.0f - t * t);
+        }
+
+        a_.accumulate_grad(grad_a);
+        if (a_.grad_fn())
+        {
+            a_.grad_fn()->backward(grad_a);
+        }
+    }
+
+    SoftmaxNode::SoftmaxNode(const Tensor &a, int dim, const Tensor &output)
+        : a_(a), dim_(dim), output_(output) {}
+
+    void SoftmaxNode::backward(const Tensor &grad_output)
+    {
+        if (!a_.requires_grad())
+        {
+            return;
+        }
+
+        Shape shape = a_.shape();
+        int rank = static_cast<int>(shape.rank());
+        Size stride = 1;
+        for (int i = dim_ + 1; i < rank; ++i)
+        {
+            stride *= shape[i];
+        }
+        Size outer_size = a_.numel() / (shape[dim_] * stride);
+
+        Tensor grad_a = Tensor::zeros(a_.shape(), false);
+
+        for (Size o = 0; o < outer_size; ++o)
+        {
+            for (Size s = 0; s < stride; ++s)
+            {
+                for (Size i = 0; i < shape[dim_]; ++i)
+                {
+                    Size idx_i = o * shape[dim_] * stride + i * stride + s;
+                    Tensor::value_type sum_grad = 0.0f;
+
+                    for (Size j = 0; j < shape[dim_]; ++j)
+                    {
+                        Size idx_j = o * shape[dim_] * stride + j * stride + s;
+                        Tensor::value_type factor = output_.data()[idx_j] * ((i == j ? 1.0f : 0.0f) - output_.data()[idx_i]);
+                        sum_grad += grad_output.data()[idx_j] * factor;
+                    }
+                    grad_a.data()[idx_i] = sum_grad;
+                }
+            }
         }
 
         a_.accumulate_grad(grad_a);

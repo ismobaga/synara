@@ -8,6 +8,15 @@ namespace synara
         return {};
     }
 
+    StateDict Module::state_dict(const std::string &) const
+    {
+        return {};
+    }
+
+    void Module::load_state_dict(const StateDict &, const std::string &)
+    {
+    }
+
     Tensor Module::operator()(const Tensor &input)
     {
         return forward(input);

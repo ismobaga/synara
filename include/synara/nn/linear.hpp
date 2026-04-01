@@ -17,6 +17,8 @@ namespace synara
 
         Tensor forward(const Tensor &input) override;
         std::vector<Parameter *> parameters() override;
+        StateDict state_dict(const std::string &prefix = "") const override;
+        void load_state_dict(const StateDict &state, const std::string &prefix = "") override;
 
         Parameter &weight() noexcept;
         const Parameter &weight() const noexcept;

@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <stdexcept>
+#include <string>
 #include <utility>
 
 #include "synara/autograd/node.hpp"
@@ -159,6 +160,57 @@ namespace synara
             return {&weight_, &bias_};
         }
         return {&weight_};
+    }
+
+    StateDict Linear::state_dict(const std::string &prefix) const
+    {
+        StateDict out;
+        out.emplace(prefix + "weight", Tensor::from_vector(weight_.tensor().shape(), std::vector<Tensor::value_type>(weight_.tensor().data(), weight_.tensor().data() + weight_.tensor().numel()), false));
+        if (use_bias_)
+        {
+            out.emplace(prefix + "bias", Tensor::from_vector(bias_.tensor().shape(), std::vector<Tensor::value_type>(bias_.tensor().data(), bias_.tensor().data() + bias_.tensor().numel()), false));
+        }
+        return out;
+    }
+
+    void Linear::load_state_dict(const StateDict &state, const std::string &prefix)
+    {
+        const std::string weight_key = prefix + "weight";
+        const auto w_it = state.find(weight_key);
+        if (w_it == state.end())
+        {
+            throw ValueError("Linear::load_state_dict(): missing key '" + weight_key + "'.");
+        }
+        if (w_it->second.shape() != weight_.tensor().shape())
+        {
+            throw ShapeError("Linear::load_state_dict(): shape mismatch for key '" + weight_key + "'.");
+        }
+
+        for (Size i = 0; i < weight_.tensor().numel(); ++i)
+        {
+            weight_.tensor().data()[i] = w_it->second.data()[i];
+        }
+
+        if (!use_bias_)
+        {
+            return;
+        }
+
+        const std::string bias_key = prefix + "bias";
+        const auto b_it = state.find(bias_key);
+        if (b_it == state.end())
+        {
+            throw ValueError("Linear::load_state_dict(): missing key '" + bias_key + "'.");
+        }
+        if (b_it->second.shape() != bias_.tensor().shape())
+        {
+            throw ShapeError("Linear::load_state_dict(): shape mismatch for key '" + bias_key + "'.");
+        }
+
+        for (Size i = 0; i < bias_.tensor().numel(); ++i)
+        {
+            bias_.tensor().data()[i] = b_it->second.data()[i];
+        }
     }
 
     Parameter &Linear::weight() noexcept { return weight_; }

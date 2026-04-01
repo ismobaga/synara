@@ -22,6 +22,7 @@ add_library(synara_tensor
     src/ops/activation.cpp
     src/ops/loss.cpp
     src/optim/sgd.cpp
+	src/serialize/state_dict.cpp
 	src/autograd/nodes.cpp
 )
 

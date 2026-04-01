@@ -1,5 +1,6 @@
 #include "synara/nn/sequential.hpp"
 
+#include <string>
 #include <utility>
 
 namespace synara
@@ -32,6 +33,27 @@ namespace synara
             out.insert(out.end(), child_params.begin(), child_params.end());
         }
         return out;
+    }
+
+    StateDict Sequential::state_dict(const std::string &prefix) const
+    {
+        StateDict out;
+        for (Size i = 0; i < modules_.size(); ++i)
+        {
+            const std::string module_prefix = prefix + "layers." + std::to_string(i) + ".";
+            StateDict child = modules_[i]->state_dict(module_prefix);
+            out.insert(child.begin(), child.end());
+        }
+        return out;
+    }
+
+    void Sequential::load_state_dict(const StateDict &state, const std::string &prefix)
+    {
+        for (Size i = 0; i < modules_.size(); ++i)
+        {
+            const std::string module_prefix = prefix + "layers." + std::to_string(i) + ".";
+            modules_[i]->load_state_dict(state, module_prefix);
+        }
     }
 
     Size Sequential::size() const noexcept

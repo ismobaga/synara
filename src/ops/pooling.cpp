@@ -69,6 +69,109 @@ namespace synara
             std::vector<Size> argmax_;
         };
 
+        class AvgPool2dNode : public Node
+        {
+        public:
+            AvgPool2dNode(Tensor input,
+                          Shape output_shape,
+                          std::vector<Size> counts,
+                          Size kernel_h,
+                          Size kernel_w,
+                          Size stride_h,
+                          Size stride_w,
+                          Size pad_h,
+                          Size pad_w)
+                : input_(std::move(input)),
+                  output_shape_(std::move(output_shape)),
+                  counts_(std::move(counts)),
+                  kernel_h_(kernel_h),
+                  kernel_w_(kernel_w),
+                  stride_h_(stride_h),
+                  stride_w_(stride_w),
+                  pad_h_(pad_h),
+                  pad_w_(pad_w)
+            {
+            }
+
+            void backward(const Tensor &grad_output) override
+            {
+                if (!input_.requires_grad())
+                {
+                    return;
+                }
+
+                if (grad_output.shape() != output_shape_)
+                {
+                    throw ShapeError("AvgPool2dNode::backward(): gradient shape mismatch.");
+                }
+
+                const Size n = input_.shape()[0];
+                const Size c = input_.shape()[1];
+                const Size h = input_.shape()[2];
+                const Size w = input_.shape()[3];
+                const Size h_out = grad_output.shape()[2];
+                const Size w_out = grad_output.shape()[3];
+
+                Tensor grad_input = Tensor::zeros(input_.shape(), false);
+
+                Size out_flat = 0;
+                for (Size b = 0; b < n; ++b)
+                {
+                    for (Size ch = 0; ch < c; ++ch)
+                    {
+                        for (Size oh = 0; oh < h_out; ++oh)
+                        {
+                            for (Size ow = 0; ow < w_out; ++ow)
+                            {
+                                const Size count = counts_[out_flat];
+                                const Tensor::value_type g = grad_output.data()[out_flat] /
+                                                             static_cast<Tensor::value_type>(count);
+
+                                for (Size kh = 0; kh < kernel_h_; ++kh)
+                                {
+                                    const long long ih = static_cast<long long>(oh * stride_h_ + kh) - static_cast<long long>(pad_h_);
+                                    if (ih < 0 || ih >= static_cast<long long>(h))
+                                    {
+                                        continue;
+                                    }
+
+                                    for (Size kw = 0; kw < kernel_w_; ++kw)
+                                    {
+                                        const long long iw = static_cast<long long>(ow * stride_w_ + kw) - static_cast<long long>(pad_w_);
+                                        if (iw < 0 || iw >= static_cast<long long>(w))
+                                        {
+                                            continue;
+                                        }
+
+                                        grad_input.at({b, ch, static_cast<Size>(ih), static_cast<Size>(iw)}) += g;
+                                    }
+                                }
+
+                                ++out_flat;
+                            }
+                        }
+                    }
+                }
+
+                input_.accumulate_grad(grad_input);
+                if (input_.grad_fn())
+                {
+                    input_.grad_fn()->backward(grad_input);
+                }
+            }
+
+        private:
+            Tensor input_;
+            Shape output_shape_;
+            std::vector<Size> counts_;
+            Size kernel_h_;
+            Size kernel_w_;
+            Size stride_h_;
+            Size stride_w_;
+            Size pad_h_;
+            Size pad_w_;
+        };
+
     } // namespace
 
     Tensor max_pool2d(const Tensor &input,
@@ -168,6 +271,111 @@ namespace synara
         if (requires_grad)
         {
             out.set_grad_fn(std::make_shared<MaxPool2dNode>(input, out.shape(), std::move(argmax)));
+        }
+
+        return out;
+    }
+
+    Tensor avg_pool2d(const Tensor &input,
+                      Size kernel_h,
+                      Size kernel_w,
+                      Size stride_h,
+                      Size stride_w,
+                      Size pad_h,
+                      Size pad_w)
+    {
+        if (input.rank() != 4)
+        {
+            throw ShapeError("avg_pool2d(): input must be rank 4 (N, C, H, W).");
+        }
+        if (kernel_h == 0 || kernel_w == 0)
+        {
+            throw ValueError("avg_pool2d(): kernel dimensions must be > 0.");
+        }
+        if (stride_h == 0 || stride_w == 0)
+        {
+            throw ValueError("avg_pool2d(): stride must be >= 1.");
+        }
+
+        const Size n = input.shape()[0];
+        const Size c = input.shape()[1];
+        const Size h = input.shape()[2];
+        const Size w = input.shape()[3];
+
+        if (n == 0 || c == 0 || h == 0 || w == 0)
+        {
+            throw ShapeError("avg_pool2d(): all input dimensions must be > 0.");
+        }
+
+        const Size padded_h = h + 2 * pad_h;
+        const Size padded_w = w + 2 * pad_w;
+        if (padded_h < kernel_h || padded_w < kernel_w)
+        {
+            throw ShapeError("avg_pool2d(): kernel larger than padded input.");
+        }
+
+        const Size h_out = (padded_h - kernel_h) / stride_h + 1;
+        const Size w_out = (padded_w - kernel_w) / stride_w + 1;
+
+        const bool requires_grad = input.requires_grad();
+        Tensor out = Tensor::zeros(Shape({n, c, h_out, w_out}), requires_grad);
+        std::vector<Size> counts(out.numel(), 0);
+
+        Size out_flat = 0;
+        for (Size b = 0; b < n; ++b)
+        {
+            for (Size ch = 0; ch < c; ++ch)
+            {
+                for (Size oh = 0; oh < h_out; ++oh)
+                {
+                    for (Size ow = 0; ow < w_out; ++ow)
+                    {
+                        Tensor::value_type acc = 0.0f;
+                        Size count = 0;
+
+                        for (Size kh = 0; kh < kernel_h; ++kh)
+                        {
+                            const long long ih = static_cast<long long>(oh * stride_h + kh) - static_cast<long long>(pad_h);
+                            if (ih < 0 || ih >= static_cast<long long>(h))
+                            {
+                                continue;
+                            }
+
+                            for (Size kw = 0; kw < kernel_w; ++kw)
+                            {
+                                const long long iw = static_cast<long long>(ow * stride_w + kw) - static_cast<long long>(pad_w);
+                                if (iw < 0 || iw >= static_cast<long long>(w))
+                                {
+                                    continue;
+                                }
+
+                                acc += input.at({b, ch, static_cast<Size>(ih), static_cast<Size>(iw)});
+                                ++count;
+                            }
+                        }
+
+                        counts[out_flat] = count;
+                        out.data()[out_flat] = acc / static_cast<Tensor::value_type>(count);
+                        ++out_flat;
+                    }
+                }
+            }
+        }
+
+        out.set_leaf(!requires_grad);
+        out.set_requires_grad(requires_grad);
+        if (requires_grad)
+        {
+            out.set_grad_fn(std::make_shared<AvgPool2dNode>(
+                input,
+                out.shape(),
+                std::move(counts),
+                kernel_h,
+                kernel_w,
+                stride_h,
+                stride_w,
+                pad_h,
+                pad_w));
         }
 
         return out;

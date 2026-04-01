@@ -13,10 +13,14 @@ add_library(synara_tensor
 	src/tensor/storage.cpp
 	src/tensor/strides.cpp
 	src/tensor/tensor.cpp
+	src/nn/module.cpp
+	src/nn/linear.cpp
+	src/nn/sequential.cpp
 	src/ops/elementwise.cpp
     src/ops/reduction.cpp
     src/ops/linalg.cpp
     src/ops/activation.cpp
+    src/ops/loss.cpp
 	src/autograd/nodes.cpp
 )
 

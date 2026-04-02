@@ -346,4 +346,86 @@ namespace synara
             pred_.grad_fn()->backward(grad_pred);
         }
     }
+
+    GELUNode::GELUNode(const Tensor &a)
+        : a_(a) {}
+
+    void GELUNode::backward(const Tensor &grad_output)
+    {
+        if (!a_.requires_grad())
+        {
+            return;
+        }
+
+        constexpr Tensor::value_type kAlpha = 0.7978845608f; // sqrt(2/pi)
+        constexpr Tensor::value_type kBeta  = 0.044715f;
+
+        Tensor grad_a = Tensor::zeros(a_.shape(), false);
+
+        for (Size i = 0; i < a_.numel(); ++i)
+        {
+            const Tensor::value_type x      = a_.data()[i];
+            const Tensor::value_type inner  = kAlpha * (x + kBeta * x * x * x);
+            const Tensor::value_type t      = std::tanh(inner);
+            const Tensor::value_type sech2  = 1.0f - t * t;
+            // d/dx GELU(x) = 0.5*(1 + t) + 0.5*x*sech^2(inner)*alpha*(1 + 3*beta*x^2)
+            const Tensor::value_type d_inner = kAlpha * (1.0f + 3.0f * kBeta * x * x);
+            grad_a.data()[i] = grad_output.data()[i] *
+                               (0.5f * (1.0f + t) + 0.5f * x * sech2 * d_inner);
+        }
+
+        a_.accumulate_grad(grad_a);
+        if (a_.grad_fn())
+        {
+            a_.grad_fn()->backward(grad_a);
+        }
+    }
+
+    CrossEntropyNode::CrossEntropyNode(const Tensor &logits, const Tensor &targets)
+        : logits_(logits), targets_(targets) {}
+
+    void CrossEntropyNode::backward(const Tensor &grad_output)
+    {
+        if (!logits_.requires_grad())
+        {
+            return;
+        }
+
+        const Tensor::value_type upstream = grad_output.item();
+        const Size N = logits_.shape()[0];
+        const Size C = logits_.shape()[1];
+
+        Tensor grad_logits = Tensor::zeros(logits_.shape(), false);
+
+        for (Size n = 0; n < N; ++n)
+        {
+            // Compute softmax for sample n
+            Tensor::value_type max_val = logits_.data()[n * C];
+            for (Size c = 0; c < C; ++c)
+            {
+                if (logits_.data()[n * C + c] > max_val)
+                    max_val = logits_.data()[n * C + c];
+            }
+
+            Tensor::value_type sum_exp = 0.0f;
+            for (Size c = 0; c < C; ++c)
+                sum_exp += std::exp(logits_.data()[n * C + c] - max_val);
+
+            for (Size c = 0; c < C; ++c)
+            {
+                const Tensor::value_type softmax_c =
+                    std::exp(logits_.data()[n * C + c] - max_val) / sum_exp;
+                // gradient: (softmax - target) / N
+                grad_logits.data()[n * C + c] =
+                    upstream * (softmax_c - targets_.data()[n * C + c]) /
+                    static_cast<Tensor::value_type>(N);
+            }
+        }
+
+        logits_.accumulate_grad(grad_logits);
+        if (logits_.grad_fn())
+        {
+            logits_.grad_fn()->backward(grad_logits);
+        }
+    }
 } // namespace synara

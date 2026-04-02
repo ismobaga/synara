@@ -10,5 +10,6 @@ namespace synara
     Tensor sigmoid(const Tensor &a);
     Tensor tanh(const Tensor &a);
     Tensor softmax(const Tensor &a, int dim = -1);
+    Tensor gelu(const Tensor &a);
 
 } // namespace synara

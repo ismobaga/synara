@@ -8,11 +8,17 @@
 #include <stdexcept>
 #include <ostream>
 #include <sstream>
+#include <random>
 
 namespace synara
 {
     namespace
     {
+        std::mt19937 &global_rng()
+        {
+            static std::mt19937 rng(std::random_device{}());
+            return rng;
+        }
 
         std::size_t normalize_bound(long long index, std::size_t dim_size)
         {
@@ -101,6 +107,45 @@ namespace synara
         }
         return make_view(shape, Strides::contiguous(shape),
                          std::make_shared<Storage>(std::move(values)), 0, requires_grad, true);
+    }
+
+    Tensor Tensor::randn(const Shape &shape, value_type mean, value_type stddev, bool requires_grad)
+    {
+        if (stddev <= 0.0)
+        {
+            throw ValueError("randn(): stddev must be positive.");
+        }
+
+        std::normal_distribution<value_type> dist(mean, stddev);
+
+        std::vector<value_type> values(shape.numel());
+        for (std::size_t i = 0; i < shape.numel(); ++i)
+        {
+            values[i] = dist(global_rng());
+        }
+        return from_vector(shape, values, requires_grad);
+    }
+
+    Tensor Tensor::uniform(const Shape &shape, value_type min, value_type max, bool requires_grad)
+    {
+        if (min > max)
+        {
+            throw ValueError("uniform(): min must be <= max.");
+        }
+
+        std::uniform_real_distribution<value_type> dist(min, max);
+
+        std::vector<value_type> values(shape.numel());
+        for (std::size_t i = 0; i < shape.numel(); ++i)
+        {
+            values[i] = dist(global_rng());
+        }
+        return from_vector(shape, values, requires_grad);
+    }
+
+    void Tensor::manual_seed(std::uint64_t seed)
+    {
+        global_rng().seed(static_cast<std::mt19937::result_type>(seed));
     }
 
     const Shape &Tensor::shape() const noexcept { return impl_->shape; }

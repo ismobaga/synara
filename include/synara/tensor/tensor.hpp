@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <cstddef>
 #include <initializer_list>
 #include <memory>
@@ -32,6 +33,9 @@ namespace synara
         static Tensor ones(const Shape &shape, bool requires_grad = false);
         static Tensor full(const Shape &shape, value_type value, bool requires_grad = false);
         static Tensor from_vector(const Shape &shape, std::vector<value_type> values, bool requires_grad = false);
+        static Tensor randn(const Shape &shape, value_type mean = 0.0f, value_type stddev = 1.0f, bool requires_grad = false);
+        static Tensor uniform(const Shape &shape, value_type min = 0.0f, value_type max = 1.0f, bool requires_grad = false);
+        static void manual_seed(std::uint64_t seed);
 
         const Shape &shape() const noexcept;
         const Strides &strides() const noexcept;

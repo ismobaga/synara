@@ -29,8 +29,10 @@ add_library(synara_tensor
     src/ops/loss.cpp
     src/optim/sgd.cpp
     src/optim/adam.cpp
+    src/optim/rmsprop.cpp
 	src/serialize/state_dict.cpp
 	src/autograd/nodes.cpp
+	src/autograd/engine.cpp
 )
 
 add_library(synara::tensor ALIAS synara_tensor)

@@ -137,6 +137,27 @@ namespace synara
         Tensor b_;
     };
 
+    class GELUNode : public Node
+    {
+    public:
+        explicit GELUNode(const Tensor &a);
+        void backward(const Tensor &grad_output) override;
+
+    private:
+        Tensor a_;
+    };
+
+    class CrossEntropyNode : public Node
+    {
+    public:
+        CrossEntropyNode(const Tensor &logits, const Tensor &targets);
+        void backward(const Tensor &grad_output) override;
+
+    private:
+        Tensor logits_;
+        Tensor targets_;
+    };
+
     class BCENode : public Node
     {
     public:

@@ -143,4 +143,30 @@ namespace synara
         return out;
     }
 
+    // GELU approximation: 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))
+    Tensor gelu(const Tensor &a)
+    {
+        constexpr Tensor::value_type kAlpha = 0.7978845608f; // sqrt(2/pi)
+        constexpr Tensor::value_type kBeta  = 0.044715f;
+
+        Tensor out = Tensor::zeros(a.shape());
+
+        for (Size i = 0; i < a.numel(); ++i)
+        {
+            const Tensor::value_type x  = a.data()[i];
+            const Tensor::value_type inner = kAlpha * (x + kBeta * x * x * x);
+            out.data()[i] = 0.5f * x * (1.0f + std::tanh(inner));
+        }
+
+        out.set_leaf(!a.requires_grad());
+        out.set_requires_grad(a.requires_grad());
+        if (a.requires_grad())
+        {
+            auto node = std::make_shared<GELUNode>(a);
+            out.set_grad_fn(node);
+        }
+
+        return out;
+    }
+
 } // namespace synara

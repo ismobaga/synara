@@ -7,10 +7,12 @@
 namespace synara
 {
 
+    inline constexpr std::uint64_t kDropoutAutoSeed = ~std::uint64_t{0};
+
     class Dropout : public Module
     {
     public:
-        explicit Dropout(Tensor::value_type p = 0.5f, std::uint64_t seed = 0xC0FFEEULL);
+        explicit Dropout(Tensor::value_type p = 0.5f, std::uint64_t seed = kDropoutAutoSeed);
 
         Tensor forward(const Tensor &input) override;
         std::vector<Parameter *> parameters() override { return {}; }

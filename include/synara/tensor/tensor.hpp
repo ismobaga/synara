@@ -36,6 +36,7 @@ namespace synara
         static Tensor randn(const Shape &shape, value_type mean = 0.0f, value_type stddev = 1.0f, bool requires_grad = false);
         static Tensor uniform(const Shape &shape, value_type min = 0.0f, value_type max = 1.0f, bool requires_grad = false);
         static void manual_seed(std::uint64_t seed);
+        static std::uint64_t random_seed();
 
         const Shape &shape() const noexcept;
         const Strides &strides() const noexcept;

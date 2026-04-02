@@ -148,6 +148,13 @@ namespace synara
         global_rng().seed(static_cast<std::mt19937::result_type>(seed));
     }
 
+    std::uint64_t Tensor::random_seed()
+    {
+        const std::uint64_t hi = static_cast<std::uint64_t>(global_rng()());
+        const std::uint64_t lo = static_cast<std::uint64_t>(global_rng()());
+        return (hi << 32) | lo;
+    }
+
     const Shape &Tensor::shape() const noexcept { return impl_->shape; }
 
     const Strides &Tensor::strides() const noexcept { return impl_->strides; }

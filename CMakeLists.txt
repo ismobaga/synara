@@ -15,6 +15,7 @@ add_library(synara_tensor
 	src/tensor/tensor.cpp
 	src/nn/module.cpp
 	src/nn/linear.cpp
+	src/nn/layer_norm.cpp
 	src/nn/conv2d.cpp
 	src/nn/batch_norm.cpp
 	src/nn/dropout.cpp

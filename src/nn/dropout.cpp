@@ -53,6 +53,11 @@ namespace synara
         {
             throw ValueError("Dropout::Dropout(): p must be in [0, 1].");
         }
+
+        if (rng_state_ == kDropoutAutoSeed)
+        {
+            rng_state_ = Tensor::random_seed();
+        }
     }
 
     Tensor Dropout::forward(const Tensor &input)

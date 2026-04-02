@@ -29,7 +29,9 @@ add_library(synara_tensor
     src/ops/loss.cpp
     src/optim/sgd.cpp
     src/optim/adam.cpp
+    src/optim/adamw.cpp
     src/optim/rmsprop.cpp
+    src/optim/clip_grad.cpp
 	src/serialize/state_dict.cpp
 	src/autograd/nodes.cpp
 	src/autograd/engine.cpp

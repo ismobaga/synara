@@ -5,28 +5,44 @@ autograd fundamentals, and end-to-end neural network building blocks.
 
 ## Current Capabilities
 
+### Tensor System
+
+- Multi-dimensional tensors with arbitrary shapes and strides
+- Views (reshape, transpose, flatten, slice) with zero-copy semantics
+- Random initialisation: `randn()`, `uniform()`
+- Deterministic seeding: `manual_seed()`, `random_seed()`
+
 ### Autograd Ops
 
-- Elementwise: add, sub, mul, div
+- Elementwise: `add`, `sub`, `mul`, `div`
 - Reduction: `sum`, `mean`
 - Matrix multiplication: `matmul`
-- Activations: `relu`, `sigmoid`
+- Activations: `relu`, `leaky_relu`, `sigmoid`, `tanh`, `softmax`
 - Losses: `mse_loss`, `binary_cross_entropy`
+- Convolution: `conv2d` (stride, padding, dilation, groups)
+- Pooling: `max_pool2d`, `avg_pool2d`
 
 ### Neural Network Modules
 
 - `Linear`
-- `ReLU`
-- `Sigmoid`
+- `Conv2d`
+- `ReLU`, `LeakyReLU`, `Sigmoid`, `Tanh`, `Softmax`
+- `BatchNorm` (batch normalisation with running statistics)
+- `LayerNorm`
+- `Dropout`
+- `MaxPool2d`, `AvgPool2d`
 - `Sequential`
 
-### Optimizer
+### Optimizers
 
 - `SGD` with:
-	- learning rate
-	- momentum
-	- weight decay
-	- max gradient norm (clipping)
+  - learning rate
+  - momentum
+  - weight decay
+  - max gradient norm (clipping)
+- `Adam` with:
+  - learning rate, β₁, β₂, ε
+  - weight decay
 
 ### Serialization
 
@@ -53,6 +69,7 @@ The suite includes tensor, autograd, nn, optimizer, serialization, and finite-di
 
 ```bash
 ./build/synara
+./build/synara_tensor_basics
 ./build/synara_linear_regression
 ./build/synara_xor_mlp
 ./build/synara_mnist_cnn <mnist_dir> [epochs] [batch_size] [train_limit] [test_limit]
@@ -77,12 +94,12 @@ Tensor x = Tensor::from_vector(Shape({4, 1}), {1, 2, 3, 4});
 Tensor y = Tensor::from_vector(Shape({4, 1}), {3, 5, 7, 9});
 
 for (int epoch = 0; epoch < 300; ++epoch) {
-		Tensor pred = model(x);
-		Tensor loss = mse_loss(pred, y);
+    Tensor pred = model(x);
+    Tensor loss = mse_loss(pred, y);
 
-		optim.zero_grad();
-		loss.backward();
-		optim.step();
+    optim.zero_grad();
+    loss.backward();
+    optim.step();
 }
 ```
 

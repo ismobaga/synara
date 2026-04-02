@@ -97,6 +97,11 @@ add_executable(synara_conv2d_advanced
 )
 target_link_libraries(synara_conv2d_advanced PRIVATE synara_tensor)
 
+add_executable(synara_mnist_cnn
+	examples/09_mnist_cnn.cpp
+)
+target_link_libraries(synara_mnist_cnn PRIVATE synara_tensor)
+
 add_custom_target(scaffold_test
 	COMMAND /bin/sh -c "${CMAKE_COMMAND} -DTEST_NAME=\"$$TEST_NAME\" -DTESTS_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/tests\" -P \"${CMAKE_CURRENT_SOURCE_DIR}/cmake/scaffold_test.cmake\""
 	COMMENT "Scaffold a test file: TEST_NAME=test_example make scaffold_test"

@@ -55,7 +55,15 @@ The suite includes tensor, autograd, nn, optimizer, serialization, and finite-di
 ./build/synara
 ./build/synara_linear_regression
 ./build/synara_xor_mlp
+./build/synara_mnist_cnn <mnist_dir> [epochs] [batch_size] [train_limit] [test_limit]
 ```
+
+For the MNIST example, place these IDX files in `<mnist_dir>`:
+
+- `train-images-idx3-ubyte`
+- `train-labels-idx1-ubyte`
+- `t10k-images-idx3-ubyte`
+- `t10k-labels-idx1-ubyte`
 
 ## Minimal Training Sketch
 

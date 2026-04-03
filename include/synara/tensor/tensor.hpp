@@ -58,7 +58,7 @@ namespace synara
         void set_leaf(bool value) noexcept;
         void zero_grad();
 
-        void backward();
+        void backward(bool retain_graph = false);
 
         value_type *data() noexcept;
         const value_type *data() const noexcept;

@@ -8,7 +8,6 @@
 
 namespace synara
 {
-
     AddNode::AddNode(const Tensor &a, const Tensor &b)
         : a_(a), b_(b) {}
 
@@ -17,19 +16,11 @@ namespace synara
         if (a_.requires_grad())
         {
             a_.accumulate_grad(grad_output);
-            if (a_.grad_fn())
-            {
-                a_.grad_fn()->backward(grad_output);
-            }
         }
 
         if (b_.requires_grad())
         {
             b_.accumulate_grad(grad_output);
-            if (b_.grad_fn())
-            {
-                b_.grad_fn()->backward(grad_output);
-            }
         }
     }
 
@@ -41,19 +32,11 @@ namespace synara
         if (a_.requires_grad())
         {
             a_.accumulate_grad(grad_output);
-            if (a_.grad_fn())
-            {
-                a_.grad_fn()->backward(grad_output);
-            }
         }
         if (b_.requires_grad())
         {
             Tensor neg_grad = mul(grad_output, -1.0f);
             b_.accumulate_grad(neg_grad);
-            if (b_.grad_fn())
-            {
-                b_.grad_fn()->backward(neg_grad);
-            }
         }
     }
 
@@ -66,20 +49,12 @@ namespace synara
         {
             Tensor grad_a = mul(grad_output, b_);
             a_.accumulate_grad(grad_a);
-            if (a_.grad_fn())
-            {
-                a_.grad_fn()->backward(grad_a);
-            }
         }
 
         if (b_.requires_grad())
         {
             Tensor grad_b = mul(grad_output, a_);
             b_.accumulate_grad(grad_b);
-            if (b_.grad_fn())
-            {
-                b_.grad_fn()->backward(grad_b);
-            }
         }
     }
 
@@ -92,19 +67,11 @@ namespace synara
         {
             Tensor grad_a = div(grad_output, b_);
             a_.accumulate_grad(grad_a);
-            if (a_.grad_fn())
-            {
-                a_.grad_fn()->backward(grad_a);
-            }
         }
         if (b_.requires_grad())
         {
             Tensor neg_grad = mul(grad_output, div(a_, mul(b_, b_)));
             b_.accumulate_grad(neg_grad);
-            if (b_.grad_fn())
-            {
-                b_.grad_fn()->backward(neg_grad);
-            }
         }
     }
 
@@ -120,11 +87,6 @@ namespace synara
 
         Tensor grad_a = Tensor::full(a_.shape(), grad_output.item(), false);
         a_.accumulate_grad(grad_a);
-
-        if (a_.grad_fn())
-        {
-            a_.grad_fn()->backward(grad_a);
-        }
     }
 
     MeanNode::MeanNode(const Tensor &a)
@@ -139,11 +101,6 @@ namespace synara
 
         Tensor grad_a = Tensor::full(a_.shape(), grad_output.item() / a_.numel(), false);
         a_.accumulate_grad(grad_a);
-
-        if (a_.grad_fn())
-        {
-            a_.grad_fn()->backward(grad_a);
-        }
     }
 
     MatMulNode::MatMulNode(const Tensor &a, const Tensor &b)
@@ -155,20 +112,12 @@ namespace synara
         {
             Tensor grad_a = matmul(grad_output, b_.transpose(0, 1));
             a_.accumulate_grad(grad_a);
-            if (a_.grad_fn())
-            {
-                a_.grad_fn()->backward(grad_a);
-            }
         }
 
         if (b_.requires_grad())
         {
             Tensor grad_b = matmul(a_.transpose(0, 1), grad_output);
             b_.accumulate_grad(grad_b);
-            if (b_.grad_fn())
-            {
-                b_.grad_fn()->backward(grad_b);
-            }
         }
     }
 
@@ -190,11 +139,6 @@ namespace synara
             }
         }
         a_.accumulate_grad(grad_a);
-
-        if (a_.grad_fn())
-        {
-            a_.grad_fn()->backward(grad_a);
-        }
     }
 
     LeakyReLUNode::LeakyReLUNode(const Tensor &a, Tensor::value_type negative_slope)
@@ -217,10 +161,6 @@ namespace synara
         }
 
         a_.accumulate_grad(grad_a);
-        if (a_.grad_fn())
-        {
-            a_.grad_fn()->backward(grad_a);
-        }
     }
 
     SigmoidNode::SigmoidNode(const Tensor &a)
@@ -241,10 +181,6 @@ namespace synara
         }
 
         a_.accumulate_grad(grad_a);
-        if (a_.grad_fn())
-        {
-            a_.grad_fn()->backward(grad_a);
-        }
     }
 
     TanhNode::TanhNode(const Tensor &a)
@@ -265,10 +201,6 @@ namespace synara
         }
 
         a_.accumulate_grad(grad_a);
-        if (a_.grad_fn())
-        {
-            a_.grad_fn()->backward(grad_a);
-        }
     }
 
     SoftmaxNode::SoftmaxNode(const Tensor &a, int dim, const Tensor &output)
@@ -313,10 +245,6 @@ namespace synara
         }
 
         a_.accumulate_grad(grad_a);
-        if (a_.grad_fn())
-        {
-            a_.grad_fn()->backward(grad_a);
-        }
     }
 
     BCENode::BCENode(const Tensor &pred, const Tensor &target, Tensor::value_type eps)
@@ -341,10 +269,6 @@ namespace synara
         }
 
         pred_.accumulate_grad(grad_pred);
-        if (pred_.grad_fn())
-        {
-            pred_.grad_fn()->backward(grad_pred);
-        }
     }
 
     GELUNode::GELUNode(const Tensor &a)
@@ -375,10 +299,6 @@ namespace synara
         }
 
         a_.accumulate_grad(grad_a);
-        if (a_.grad_fn())
-        {
-            a_.grad_fn()->backward(grad_a);
-        }
     }
 
     CrossEntropyNode::CrossEntropyNode(const Tensor &logits, const Tensor &targets)
@@ -423,10 +343,6 @@ namespace synara
         }
 
         logits_.accumulate_grad(grad_logits);
-        if (logits_.grad_fn())
-        {
-            logits_.grad_fn()->backward(grad_logits);
-        }
     }
 
     // ---- Dim-aware Reduction Nodes ----
@@ -465,8 +381,6 @@ namespace synara
             }
         }
         a_.accumulate_grad(grad_a);
-        if (a_.grad_fn())
-            a_.grad_fn()->backward(grad_a);
     }
     MeanDimNode::MeanDimNode(const Tensor &a, int dim, bool keepdim)
         : a_(a), dim_(dim), keepdim_(keepdim) {}
@@ -500,8 +414,6 @@ namespace synara
             }
         }
         a_.accumulate_grad(grad_a);
-        if (a_.grad_fn())
-            a_.grad_fn()->backward(grad_a);
     }
     MaxDimNode::MaxDimNode(const Tensor &a, int dim, bool keepdim, const Tensor &output)
         : a_(a), dim_(dim), keepdim_(keepdim), output_(output) {}
@@ -554,8 +466,6 @@ namespace synara
             }
         }
         a_.accumulate_grad(grad_a);
-        if (a_.grad_fn())
-            a_.grad_fn()->backward(grad_a);
     }
     MinDimNode::MinDimNode(const Tensor &a, int dim, bool keepdim, const Tensor &output)
         : a_(a), dim_(dim), keepdim_(keepdim), output_(output) {}
@@ -607,8 +517,6 @@ namespace synara
             }
         }
         a_.accumulate_grad(grad_a);
-        if (a_.grad_fn())
-            a_.grad_fn()->backward(grad_a);
     }
     // ---- Shape Nodes ----
     SqueezeNode::SqueezeNode(const Tensor &a, int dim)
@@ -620,8 +528,6 @@ namespace synara
         // Inverse of squeeze is unsqueeze
         Tensor grad_a = grad_output.reshape(a_.shape());
         a_.accumulate_grad(grad_a);
-        if (a_.grad_fn())
-            a_.grad_fn()->backward(grad_a);
     }
     UnsqueezeNode::UnsqueezeNode(const Tensor &a, int dim)
         : a_(a), dim_(dim) {}
@@ -632,8 +538,6 @@ namespace synara
         // Inverse of unsqueeze is reshape back to original shape
         Tensor grad_a = grad_output.reshape(a_.shape());
         a_.accumulate_grad(grad_a);
-        if (a_.grad_fn())
-            a_.grad_fn()->backward(grad_a);
     }
     PermuteNode::PermuteNode(const Tensor &a, const std::vector<int> &dims)
         : a_(a), dims_(dims) {}
@@ -672,8 +576,6 @@ namespace synara
             grad_a_cont.data()[flat] = grad_a.at(std::vector<Size>(idx.begin(), idx.end()));
         }
         a_.accumulate_grad(grad_a_cont);
-        if (a_.grad_fn())
-            a_.grad_fn()->backward(grad_a_cont);
     }
     CatNode::CatNode(const std::vector<Tensor> &inputs, int dim)
         : inputs_(inputs), dim_(dim) {}
@@ -718,8 +620,6 @@ namespace synara
                 }
             }
             inp.accumulate_grad(grad_piece);
-            if (inp.grad_fn())
-                inp.grad_fn()->backward(grad_piece);
             offset += seg_size;
         }
     }
@@ -758,8 +658,6 @@ namespace synara
                 }
             }
             inp.accumulate_grad(grad_piece);
-            if (inp.grad_fn())
-                inp.grad_fn()->backward(grad_piece);
         }
     }
     SplitNode::SplitNode(const Tensor &a, int split_size, int dim)
@@ -818,8 +716,6 @@ namespace synara
         }
 
         a_.accumulate_grad(grad_a);
-        if (a_.grad_fn())
-            a_.grad_fn()->backward(grad_a);
     }
     // ---- Math Nodes ----
     ExpNode::ExpNode(const Tensor &a, const Tensor &output)
@@ -834,8 +730,6 @@ namespace synara
             grad_a.data()[i] = grad_output.data()[i] * output_.data()[i];
         }
         a_.accumulate_grad(grad_a);
-        if (a_.grad_fn())
-            a_.grad_fn()->backward(grad_a);
     }
     LogNode::LogNode(const Tensor &a) : a_(a) {}
     void LogNode::backward(const Tensor &grad_output)
@@ -848,8 +742,6 @@ namespace synara
             grad_a.data()[i] = grad_output.data()[i] / a_.data()[i];
         }
         a_.accumulate_grad(grad_a);
-        if (a_.grad_fn())
-            a_.grad_fn()->backward(grad_a);
     }
     Log2Node::Log2Node(const Tensor &a) : a_(a) {}
     void Log2Node::backward(const Tensor &grad_output)
@@ -863,8 +755,6 @@ namespace synara
             grad_a.data()[i] = grad_output.data()[i] / (a_.data()[i] * ln2);
         }
         a_.accumulate_grad(grad_a);
-        if (a_.grad_fn())
-            a_.grad_fn()->backward(grad_a);
     }
     SqrtNode::SqrtNode(const Tensor &a, const Tensor &output)
         : a_(a), output_(output) {}
@@ -878,8 +768,6 @@ namespace synara
             grad_a.data()[i] = grad_output.data()[i] / (2.0f * output_.data()[i]);
         }
         a_.accumulate_grad(grad_a);
-        if (a_.grad_fn())
-            a_.grad_fn()->backward(grad_a);
     }
     PowNode::PowNode(const Tensor &a, Tensor::value_type exponent)
         : a_(a), exponent_(exponent) {}
@@ -894,8 +782,6 @@ namespace synara
                                std::pow(a_.data()[i], exponent_ - 1.0f);
         }
         a_.accumulate_grad(grad_a);
-        if (a_.grad_fn())
-            a_.grad_fn()->backward(grad_a);
     }
     AbsNode::AbsNode(const Tensor &a) : a_(a) {}
     void AbsNode::backward(const Tensor &grad_output)
@@ -909,8 +795,6 @@ namespace synara
             grad_a.data()[i] = grad_output.data()[i] * (x > 0.0f ? 1.0f : (x < 0.0f ? -1.0f : 0.0f));
         }
         a_.accumulate_grad(grad_a);
-        if (a_.grad_fn())
-            a_.grad_fn()->backward(grad_a);
     }
     SignNode::SignNode(const Tensor &a) : a_(a) {}
     void SignNode::backward(const Tensor & /*grad_output*/)
@@ -920,8 +804,6 @@ namespace synara
             return;
         Tensor grad_a = Tensor::zeros(a_.shape(), false);
         a_.accumulate_grad(grad_a);
-        if (a_.grad_fn())
-            a_.grad_fn()->backward(grad_a);
     }
     ClampNode::ClampNode(const Tensor &a, Tensor::value_type min_val, Tensor::value_type max_val)
         : a_(a), min_val_(min_val), max_val_(max_val) {}
@@ -936,8 +818,6 @@ namespace synara
             grad_a.data()[i] = (x >= min_val_ && x <= max_val_) ? grad_output.data()[i] : 0.0f;
         }
         a_.accumulate_grad(grad_a);
-        if (a_.grad_fn())
-            a_.grad_fn()->backward(grad_a);
     }
 
     EmbeddingNode::EmbeddingNode(Tensor indices, Tensor weight)
@@ -959,7 +839,5 @@ namespace synara
                 gw[idx * embed_dim + d] += go[i * embed_dim + d];
         }
         weight_.accumulate_grad(grad_w);
-        if (weight_.grad_fn())
-            weight_.grad_fn()->backward(grad_w);
     }
 } // namespace synara

@@ -7,10 +7,12 @@
 #include "synara/tensor/tensor_impl.hpp"
 
 #include <algorithm>
+#include <functional>
 #include <stdexcept>
 #include <ostream>
 #include <sstream>
 #include <random>
+#include <unordered_set>
 
 namespace synara
 {
@@ -551,7 +553,7 @@ namespace synara
         return impl_->grad_fn;
     }
 
-    void Tensor::backward()
+    void Tensor::backward(bool retain_graph)
     {
         if (!requires_grad())
         {
@@ -563,12 +565,70 @@ namespace synara
             throw ValueError("backward(): only scalar tensors supported in Milestone 3B.");
         }
 
+        if (!impl_->grad_fn)
+        {
+            Tensor seed = Tensor::from_vector(Shape({}), {1.0f}, false);
+            accumulate_grad(seed);
+            return;
+        }
+
+        std::vector<Tensor *> topo;
+        topo.reserve(64);
+        std::unordered_set<Node *> seen;
+
+        std::function<void(Tensor *)> collect = [&](Tensor *t)
+        {
+            if (t == nullptr)
+            {
+                return;
+            }
+
+            std::shared_ptr<Node> fn = t->grad_fn();
+            if (!fn)
+            {
+                return;
+            }
+
+            Node *raw = fn.get();
+            if (!seen.insert(raw).second)
+            {
+                return;
+            }
+
+            for (Tensor *input : fn->inputs())
+            {
+                collect(input);
+            }
+            topo.push_back(t);
+        };
+
+        collect(this);
+
+        for (Tensor *t : topo)
+        {
+            t->zero_grad();
+        }
+
         Tensor seed = Tensor::from_vector(Shape({}), {1.0f}, false);
         accumulate_grad(seed);
 
-        if (impl_->grad_fn)
+        for (auto it = topo.rbegin(); it != topo.rend(); ++it)
         {
-            impl_->grad_fn->backward(seed);
+            Tensor *t = *it;
+            std::shared_ptr<Node> fn = t->grad_fn();
+            if (!fn || !t->has_grad())
+            {
+                continue;
+            }
+            fn->backward(t->grad());
+        }
+
+        if (!retain_graph)
+        {
+            for (Tensor *t : topo)
+            {
+                t->set_grad_fn(nullptr);
+            }
         }
     }
 

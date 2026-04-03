@@ -300,6 +300,19 @@ namespace synara
         int dim_;
         std::vector<std::weak_ptr<void>> outputs_;
     };
+    class SplitPieceNode : public Node
+    {
+    public:
+        SplitPieceNode(const Tensor &a, int dim, Size offset, Size chunk);
+        void backward(const Tensor &grad_output) override;
+        std::vector<Tensor *> inputs() override { return {&a_}; }
+
+    private:
+        Tensor a_;
+        int dim_;
+        Size offset_;
+        Size chunk_;
+    };
     // ---- Math Nodes ----
     class ExpNode : public Node
     {

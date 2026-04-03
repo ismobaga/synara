@@ -35,6 +35,31 @@ namespace synara
         return out;
     }
 
+    std::vector<std::pair<std::string, Tensor *>> Sequential::named_parameters(const std::string &prefix)
+    {
+        std::vector<std::pair<std::string, Tensor *>> out;
+        for (Size i = 0; i < modules_.size(); ++i)
+        {
+            const std::string module_prefix = prefix + "layers." + std::to_string(i) + ".";
+            auto child = modules_[i]->named_parameters(module_prefix);
+            out.insert(out.end(), child.begin(), child.end());
+        }
+        return out;
+    }
+
+    std::vector<std::pair<std::string, Module *>> Sequential::named_modules(const std::string &prefix)
+    {
+        std::vector<std::pair<std::string, Module *>> out;
+        out.emplace_back(prefix, this);
+        for (Size i = 0; i < modules_.size(); ++i)
+        {
+            const std::string module_prefix = prefix + "layers." + std::to_string(i);
+            auto child = modules_[i]->named_modules(module_prefix);
+            out.insert(out.end(), child.begin(), child.end());
+        }
+        return out;
+    }
+
     StateDict Sequential::state_dict(const std::string &prefix) const
     {
         StateDict out;
@@ -53,6 +78,24 @@ namespace synara
         {
             const std::string module_prefix = prefix + "layers." + std::to_string(i) + ".";
             modules_[i]->load_state_dict(state, module_prefix);
+        }
+    }
+
+    void Sequential::train() noexcept
+    {
+        Module::train();
+        for (const auto &module : modules_)
+        {
+            module->train();
+        }
+    }
+
+    void Sequential::eval() noexcept
+    {
+        Module::eval();
+        for (const auto &module : modules_)
+        {
+            module->eval();
         }
     }
 

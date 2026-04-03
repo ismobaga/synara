@@ -18,12 +18,17 @@ namespace synara
 
     std::size_t TensorDataset::size() const noexcept
     {
+        return len();
+    }
+
+    std::size_t TensorDataset::len() const noexcept
+    {
         return inputs_.shape()[0];
     }
 
     std::pair<Tensor, Tensor> TensorDataset::get(std::size_t index) const
     {
-        if (index >= size())
+        if (index >= len())
         {
             throw std::out_of_range("TensorDataset::get index out of range");
         }

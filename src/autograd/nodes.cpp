@@ -779,6 +779,48 @@ namespace synara
         (void)idx;
         (void)out;
     }
+    SplitPieceNode::SplitPieceNode(const Tensor &a, int dim, Size offset, Size chunk)
+        : a_(a), dim_(dim), offset_(offset), chunk_(chunk) {}
+    void SplitPieceNode::backward(const Tensor &grad_output)
+    {
+        if (!a_.requires_grad())
+            return;
+
+        const auto &in_shape = a_.shape().dims();
+        const int rank = static_cast<int>(in_shape.size());
+        int d = dim_;
+        if (d < 0)
+            d += rank;
+
+        Size outer = 1;
+        for (int i = 0; i < d; ++i)
+            outer *= in_shape[static_cast<Size>(i)];
+
+        Size inner = 1;
+        for (int i = d + 1; i < rank; ++i)
+            inner *= in_shape[static_cast<Size>(i)];
+
+        Tensor grad_a = Tensor::zeros(a_.shape(), false);
+        Tensor::value_type *dst = grad_a.data();
+        const Tensor::value_type *src = grad_output.data();
+        const Size total_d = in_shape[static_cast<Size>(d)];
+
+        for (Size o = 0; o < outer; ++o)
+        {
+            for (Size k = 0; k < chunk_; ++k)
+            {
+                for (Size i = 0; i < inner; ++i)
+                {
+                    dst[o * total_d * inner + (offset_ + k) * inner + i] =
+                        src[o * chunk_ * inner + k * inner + i];
+                }
+            }
+        }
+
+        a_.accumulate_grad(grad_a);
+        if (a_.grad_fn())
+            a_.grad_fn()->backward(grad_a);
+    }
     // ---- Math Nodes ----
     ExpNode::ExpNode(const Tensor &a, const Tensor &output)
         : a_(a), output_(output) {}

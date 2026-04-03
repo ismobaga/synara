@@ -72,6 +72,8 @@ namespace synara
         Tensor squeeze(int dim = -1) const;
         Tensor unsqueeze(int dim) const;
         Tensor permute(const std::vector<int> &dims) const;
+        Tensor expand(const Shape &shape) const;
+        Tensor broadcast_to(const Shape &shape) const;
         Tensor contiguous() const;
 
         Tensor clone() const;

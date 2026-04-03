@@ -18,8 +18,12 @@ namespace synara
 
         Tensor forward(const Tensor &input) override;
         std::vector<Parameter *> parameters() override;
+        std::vector<std::pair<std::string, Tensor *>> named_parameters(const std::string &prefix = "") override;
+        std::vector<std::pair<std::string, Module *>> named_modules(const std::string &prefix = "") override;
         StateDict state_dict(const std::string &prefix = "") const override;
         void load_state_dict(const StateDict &state, const std::string &prefix = "") override;
+        void train() noexcept override;
+        void eval() noexcept override;
 
         Size size() const noexcept;
 

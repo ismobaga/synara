@@ -26,8 +26,8 @@ namespace synara
 
         void step() override;
 
-        double learning_rate() const noexcept { return options_.lr; }
-        void set_learning_rate(double lr) noexcept { options_.lr = lr; }
+        double learning_rate() const noexcept override { return options_.lr; }
+        void set_learning_rate(double lr) noexcept override { options_.lr = lr; }
 
         double beta1() const noexcept { return options_.beta1; }
         void set_beta1(double beta1) noexcept { options_.beta1 = beta1; }

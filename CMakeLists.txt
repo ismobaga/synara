@@ -21,8 +21,10 @@ add_library(synara_tensor
 	src/nn/dropout.cpp
 	src/nn/sequential.cpp
 	src/ops/elementwise.cpp
+    src/ops/math.cpp
     src/ops/reduction.cpp
     src/ops/linalg.cpp
+	src/ops/shape.cpp
 	src/ops/convolution.cpp
 	src/ops/pooling.cpp
     src/ops/activation.cpp
@@ -30,6 +32,9 @@ add_library(synara_tensor
     src/optim/sgd.cpp
     src/optim/adam.cpp
     src/optim/rmsprop.cpp
+	src/optim/lr_scheduler.cpp
+	src/optim/grad_clip.cpp
+	src/metrics/metrics.cpp
 	src/serialize/state_dict.cpp
 	src/autograd/nodes.cpp
 	src/autograd/engine.cpp

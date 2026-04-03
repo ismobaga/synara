@@ -1,5 +1,7 @@
 #include "synara/tensor/tensor.hpp"
 #include "synara/autograd/node.hpp"
+#include "synara/autograd/nodes.hpp"
+#include "synara/autograd/no_grad.hpp"
 #include "synara/core/error.hpp"
 #include "synara/tensor/storage.hpp"
 #include "synara/tensor/tensor_impl.hpp"
@@ -304,21 +306,37 @@ namespace synara
         // Scalar edge case: if all dims removed, create rank-0
         if (new_dims.empty())
         {
-            return make_view(
+            Tensor out = make_view(
                 Shape({}),
                 Strides(std::vector<std::size_t>{}),
                 impl_->storage,
                 impl_->offset,
                 impl_->requires_grad,
                 impl_->is_leaf);
+            const bool req = requires_grad() && grad_mode_enabled();
+            out.set_requires_grad(req);
+            out.set_leaf(!req);
+            if (req)
+            {
+                out.set_grad_fn(std::make_shared<SqueezeNode>(*this, dim));
+            }
+            return out;
         }
-        return make_view(
+        Tensor out = make_view(
             Shape(std::move(new_dims)),
             Strides(std::move(new_strides)),
             impl_->storage,
             impl_->offset,
             impl_->requires_grad,
             impl_->is_leaf);
+        const bool req = requires_grad() && grad_mode_enabled();
+        out.set_requires_grad(req);
+        out.set_leaf(!req);
+        if (req)
+        {
+            out.set_grad_fn(std::make_shared<SqueezeNode>(*this, dim));
+        }
+        return out;
     }
     Tensor Tensor::unsqueeze(int dim) const
     {
@@ -335,13 +353,21 @@ namespace synara
         std::size_t new_stride = (dim < r) ? new_strides[dim] : 1;
         new_dims.insert(new_dims.begin() + dim, 1);
         new_strides.insert(new_strides.begin() + dim, new_stride);
-        return make_view(
+        Tensor out = make_view(
             Shape(std::move(new_dims)),
             Strides(std::move(new_strides)),
             impl_->storage,
             impl_->offset,
             impl_->requires_grad,
             impl_->is_leaf);
+        const bool req = requires_grad() && grad_mode_enabled();
+        out.set_requires_grad(req);
+        out.set_leaf(!req);
+        if (req)
+        {
+            out.set_grad_fn(std::make_shared<UnsqueezeNode>(*this, dim));
+        }
+        return out;
     }
     Tensor Tensor::permute(const std::vector<int> &dims) const
     {
@@ -372,13 +398,74 @@ namespace synara
             new_dims[i] = old_dims[nd];
             new_strides[i] = old_strides[nd];
         }
-        return make_view(
+        Tensor out = make_view(
             Shape(std::move(new_dims)),
             Strides(std::move(new_strides)),
             impl_->storage,
             impl_->offset,
             impl_->requires_grad,
             impl_->is_leaf);
+        const bool req = requires_grad() && grad_mode_enabled();
+        out.set_requires_grad(req);
+        out.set_leaf(!req);
+        if (req)
+        {
+            out.set_grad_fn(std::make_shared<PermuteNode>(*this, dims));
+        }
+        return out;
+    }
+
+    Tensor Tensor::expand(const Shape &target_shape) const
+    {
+        const auto &in_dims = impl_->shape.dims();
+        const auto &in_strides = impl_->strides.values();
+        const auto &out_dims = target_shape.dims();
+
+        if (out_dims.size() < in_dims.size())
+        {
+            throw ShapeError("expand(): target rank must be >= input rank.");
+        }
+
+        std::vector<std::size_t> out_strides(out_dims.size(), 0);
+        const int in_rank = static_cast<int>(in_dims.size());
+        const int out_rank = static_cast<int>(out_dims.size());
+
+        for (int oi = out_rank - 1, ii = in_rank - 1; oi >= 0; --oi, --ii)
+        {
+            if (ii < 0)
+            {
+                out_strides[static_cast<Size>(oi)] = 0;
+                continue;
+            }
+
+            const Size in_dim = in_dims[static_cast<Size>(ii)];
+            const Size out_dim = out_dims[static_cast<Size>(oi)];
+            if (in_dim == out_dim)
+            {
+                out_strides[static_cast<Size>(oi)] = in_strides[static_cast<Size>(ii)];
+            }
+            else if (in_dim == 1)
+            {
+                out_strides[static_cast<Size>(oi)] = 0;
+            }
+            else
+            {
+                throw ShapeError("expand(): dimensions are not broadcast-compatible.");
+            }
+        }
+
+        return make_view(
+            target_shape,
+            Strides(std::move(out_strides)),
+            impl_->storage,
+            impl_->offset,
+            impl_->requires_grad,
+            impl_->is_leaf);
+    }
+
+    Tensor Tensor::broadcast_to(const Shape &shape) const
+    {
+        return expand(shape);
     }
 
     Tensor Tensor::contiguous() const

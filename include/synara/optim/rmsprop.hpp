@@ -11,11 +11,11 @@ namespace synara
 
     struct RMSpropOptions
     {
-        double lr          = 0.01;
-        double alpha       = 0.99;  ///< smoothing constant
-        double eps         = 1e-8;
+        double lr = 0.01;
+        double alpha = 0.99; ///< smoothing constant
+        double eps = 1e-8;
         double weight_decay = 0.0;
-        double momentum    = 0.0;
+        double momentum = 0.0;
     };
 
     /// RMSprop optimiser.
@@ -36,8 +36,8 @@ namespace synara
 
         void step() override;
 
-        double learning_rate() const noexcept { return options_.lr; }
-        void set_learning_rate(double lr) noexcept { options_.lr = lr; }
+        double learning_rate() const noexcept override { return options_.lr; }
+        void set_learning_rate(double lr) noexcept override { options_.lr = lr; }
 
         double alpha() const noexcept { return options_.alpha; }
         void set_alpha(double alpha) noexcept { options_.alpha = alpha; }

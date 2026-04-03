@@ -11,6 +11,8 @@ namespace synara
         explicit Optimizer(std::vector<Tensor *> params) : params_(std::move(params)) {}
         virtual ~Optimizer() = default;
         virtual void step() = 0;
+        virtual double learning_rate() const noexcept = 0;
+        virtual void set_learning_rate(double lr) noexcept = 0;
         virtual void zero_grad()
         {
             for (Tensor *param : params_)

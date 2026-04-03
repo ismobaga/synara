@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <numeric>
 #include <random>
 #include <stdexcept>
@@ -43,6 +44,7 @@ namespace synara
         };
 
         DataLoader(TensorDataset dataset, std::size_t batch_size, bool shuffle = true, std::uint64_t seed = Tensor::random_seed());
+        DataLoader(std::shared_ptr<Dataset> dataset, std::size_t batch_size, bool shuffle = true, std::uint64_t seed = Tensor::random_seed());
 
         std::size_t size() const noexcept;
 
@@ -58,7 +60,7 @@ namespace synara
         Batch batch_at(std::size_t batch_index) const;
 
     private:
-        TensorDataset dataset_;
+        std::shared_ptr<Dataset> dataset_;
         std::size_t batch_size_;
         bool shuffle_;
         mutable std::mt19937_64 rng_;

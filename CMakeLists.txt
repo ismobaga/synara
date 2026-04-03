@@ -34,6 +34,7 @@ add_library(synara_tensor
 	src/autograd/nodes.cpp
 	src/autograd/engine.cpp
 	src/autograd/no_grad.cpp
+	src/data/dataset.cpp
 	src/data/dataloader.cpp
 )
 

@@ -33,6 +33,8 @@ add_library(synara_tensor
 	src/serialize/state_dict.cpp
 	src/autograd/nodes.cpp
 	src/autograd/engine.cpp
+	src/autograd/no_grad.cpp
+	src/data/dataloader.cpp
 )
 
 add_library(synara::tensor ALIAS synara_tensor)

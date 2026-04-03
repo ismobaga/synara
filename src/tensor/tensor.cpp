@@ -211,6 +211,17 @@ namespace synara
 
         std::fill(impl_->grad->data(), impl_->grad->data() + impl_->grad->numel(), 0.0f);
     }
+
+    Tensor Tensor::detach() const
+    {
+        return make_view(
+            impl_->shape,
+            impl_->strides,
+            impl_->storage,
+            impl_->offset,
+            false,
+            true);
+    }
     Tensor Tensor::reshape(const Shape &new_shape) const
     {
         if (new_shape.numel() != numel())
@@ -255,6 +266,161 @@ namespace synara
     Tensor Tensor::flatten() const
     {
         return reshape(Shape({numel()}));
+    }
+
+    Tensor Tensor::squeeze(int dim) const
+    {
+        std::vector<std::size_t> new_dims;
+        std::vector<std::size_t> new_strides;
+        const auto &d = impl_->shape.dims();
+        const auto &s = impl_->strides.values();
+        if (dim == -1)
+        {
+            // Remove all size-1 dims
+            for (std::size_t i = 0; i < d.size(); ++i)
+            {
+                if (d[i] != 1)
+                {
+                    new_dims.push_back(d[i]);
+                    new_strides.push_back(s[i]);
+                }
+            }
+        }
+        else
+        {
+            int r = static_cast<int>(rank());
+            if (dim < 0)
+                dim += r;
+            if (dim < 0 || dim >= r)
+                throw std::out_of_range("squeeze: dim out of range");
+            for (std::size_t i = 0; i < d.size(); ++i)
+            {
+                if (static_cast<int>(i) == dim && d[i] == 1)
+                    continue;
+                new_dims.push_back(d[i]);
+                new_strides.push_back(s[i]);
+            }
+        }
+        // Scalar edge case: if all dims removed, create rank-0
+        if (new_dims.empty())
+        {
+            return make_view(
+                Shape({}),
+                Strides(std::vector<std::size_t>{}),
+                impl_->storage,
+                impl_->offset,
+                impl_->requires_grad,
+                impl_->is_leaf);
+        }
+        return make_view(
+            Shape(std::move(new_dims)),
+            Strides(std::move(new_strides)),
+            impl_->storage,
+            impl_->offset,
+            impl_->requires_grad,
+            impl_->is_leaf);
+    }
+    Tensor Tensor::unsqueeze(int dim) const
+    {
+        int r = static_cast<int>(rank());
+        if (dim < 0)
+            dim += r + 1;
+        if (dim < 0 || dim > r)
+            throw std::out_of_range("unsqueeze: dim out of range");
+        std::vector<std::size_t> new_dims = impl_->shape.dims();
+        std::vector<std::size_t> new_strides = impl_->strides.values();
+        // Insert size-1 at position dim
+        // The stride at that position can be 0 or anything since it won't be traversed,
+        // use the stride of dim if exists, else 1
+        std::size_t new_stride = (dim < r) ? new_strides[dim] : 1;
+        new_dims.insert(new_dims.begin() + dim, 1);
+        new_strides.insert(new_strides.begin() + dim, new_stride);
+        return make_view(
+            Shape(std::move(new_dims)),
+            Strides(std::move(new_strides)),
+            impl_->storage,
+            impl_->offset,
+            impl_->requires_grad,
+            impl_->is_leaf);
+    }
+    Tensor Tensor::permute(const std::vector<int> &dims) const
+    {
+        int r = static_cast<int>(rank());
+        if (static_cast<int>(dims.size()) != r)
+            throw std::invalid_argument("permute: dims size must match tensor rank");
+        std::vector<bool> seen(r, false);
+        for (int d : dims)
+        {
+            int nd = d;
+            if (nd < 0)
+                nd += r;
+            if (nd < 0 || nd >= r)
+                throw std::out_of_range("permute: dim out of range");
+            if (seen[nd])
+                throw std::invalid_argument("permute: duplicate dimension");
+            seen[nd] = true;
+        }
+        const auto &old_dims = impl_->shape.dims();
+        const auto &old_strides = impl_->strides.values();
+        std::vector<std::size_t> new_dims(r);
+        std::vector<std::size_t> new_strides(r);
+        for (int i = 0; i < r; ++i)
+        {
+            int nd = dims[i];
+            if (nd < 0)
+                nd += r;
+            new_dims[i] = old_dims[nd];
+            new_strides[i] = old_strides[nd];
+        }
+        return make_view(
+            Shape(std::move(new_dims)),
+            Strides(std::move(new_strides)),
+            impl_->storage,
+            impl_->offset,
+            impl_->requires_grad,
+            impl_->is_leaf);
+    }
+
+    Tensor Tensor::contiguous() const
+    {
+        Tensor out = Tensor::zeros(shape(), requires_grad());
+        if (numel() == 0)
+        {
+            return out;
+        }
+
+        if (is_contiguous())
+        {
+            std::copy(data(), data() + numel(), out.data());
+            return out;
+        }
+
+        std::vector<std::size_t> idx(rank(), 0);
+        const auto &dims = impl_->shape.dims();
+        for (Size linear = 0; linear < numel(); ++linear)
+        {
+            out.data()[linear] = at(idx);
+
+            if (idx.empty())
+            {
+                continue;
+            }
+            for (int d = static_cast<int>(idx.size()) - 1; d >= 0; --d)
+            {
+                ++idx[static_cast<Size>(d)];
+                if (idx[static_cast<Size>(d)] < dims[static_cast<Size>(d)])
+                {
+                    break;
+                }
+                idx[static_cast<Size>(d)] = 0;
+            }
+        }
+        return out;
+    }
+
+    Tensor Tensor::clone() const
+    {
+        return contiguous();
     }
 
     bool Tensor::has_grad() const noexcept { return impl_->grad != nullptr; }
@@ -465,11 +631,12 @@ namespace synara
         if (dim == rank() - 1)
         {
             oss << "[";
-            for (Dim i = 0; i < impl_->shape[dim]; ++i)
+            const Size dim_len = static_cast<Size>(impl_->shape[dim]);
+            for (Size i = 0; i < dim_len; ++i)
             {
                 const Size idx = base_offset + static_cast<Size>(i * impl_->strides[dim]);
                 oss << impl_->storage->data()[idx];
-                if (i + 1 < impl_->shape[dim])
+                if (i + 1 < dim_len)
                 {
                     oss << ", ";
                 }
@@ -479,11 +646,12 @@ namespace synara
         }
 
         oss << "[";
-        for (Dim i = 0; i < impl_->shape[dim]; ++i)
+        const Size dim_len = static_cast<Size>(impl_->shape[dim]);
+        for (Size i = 0; i < dim_len; ++i)
         {
             const Size idx = base_offset + static_cast<Size>(i * impl_->strides[dim]);
             oss << format_recursive(dim + 1, idx);
-            if (i + 1 < impl_->shape[dim])
+            if (i + 1 < dim_len)
             {
                 oss << ", ";
             }

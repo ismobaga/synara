@@ -63,9 +63,18 @@ namespace synara
         value_type *data() noexcept;
         const value_type *data() const noexcept;
 
+        Tensor detach() const;
+
         Tensor reshape(const Shape &new_shape) const;
         Tensor transpose(std::size_t dim0, std::size_t dim1) const;
         Tensor flatten() const;
+
+        Tensor squeeze(int dim = -1) const;
+        Tensor unsqueeze(int dim) const;
+        Tensor permute(const std::vector<int> &dims) const;
+        Tensor contiguous() const;
+
+        Tensor clone() const;
 
         Tensor slice(std::size_t dim, const Slice &spec) const;
         Tensor slice(const std::vector<Slice> &specs) const;

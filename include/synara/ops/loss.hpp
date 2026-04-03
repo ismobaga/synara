@@ -1,6 +1,7 @@
 #pragma once
 
 #include "synara/tensor/tensor.hpp"
+#include "synara/autograd/no_grad.hpp"
 
 namespace synara
 {

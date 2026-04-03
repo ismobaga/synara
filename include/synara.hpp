@@ -2,6 +2,7 @@
 
 // Tensor
 #include "synara/tensor/tensor.hpp"
+#include "synara/tensor/tensor_types.hpp"
 
 // Autograd
 #include "synara/autograd/node.hpp"
@@ -26,6 +27,7 @@
 // NN
 #include "synara/nn/module.hpp"
 #include "synara/nn/parameter.hpp"
+#include "synara/nn/module_utils.hpp"
 #include "synara/nn/linear.hpp"
 #include "synara/nn/conv2d.hpp"
 #include "synara/nn/sequential.hpp"

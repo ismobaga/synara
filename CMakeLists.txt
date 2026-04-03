@@ -14,6 +14,7 @@ add_library(synara_tensor
 	src/tensor/strides.cpp
 	src/tensor/tensor.cpp
 	src/nn/module.cpp
+	src/nn/module_utils.cpp
 	src/nn/linear.cpp
 	src/nn/layer_norm.cpp
 	src/nn/conv2d.cpp

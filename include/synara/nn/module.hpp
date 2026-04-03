@@ -33,6 +33,14 @@ namespace synara
         Tensor operator()(const Tensor &input);
         void zero_grad();
 
+        // Enhanced introspection methods
+        std::size_t num_parameters() const;
+        std::size_t num_trainable_parameters() const;
+        std::string parameter_tree(const std::string &prefix = "") const;
+        std::string module_tree(const std::string &prefix = "") const;
+        std::vector<std::pair<std::string, std::vector<std::size_t>>> parameter_shapes() const;
+        std::size_t memory_usage() const;
+
     protected:
         bool training_ = true;
     };

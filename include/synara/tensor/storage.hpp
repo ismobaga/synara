@@ -7,15 +7,17 @@
 namespace synara
 {
 
-    class Storage
+    // Generic templated storage (works with any numeric type)
+    template <typename T = double>
+    class StorageBase
     {
     public:
-        using value_type = double;
+        using value_type = T;
 
-        Storage();
-        explicit Storage(std::size_t size);
-        Storage(std::size_t size, value_type fill_value);
-        explicit Storage(std::vector<value_type> values);
+        StorageBase();
+        explicit StorageBase(std::size_t size);
+        StorageBase(std::size_t size, value_type fill_value);
+        explicit StorageBase(std::vector<value_type> values);
 
         std::size_t size() const noexcept;
 
@@ -31,4 +33,17 @@ namespace synara
         std::shared_ptr<std::vector<value_type>> values_;
     };
 
+    // For backward compatibility: Storage defaults to double
+    class Storage : public StorageBase<double>
+    {
+    public:
+        using StorageBase<double>::StorageBase;
+    };
+
+    // Explicit float32 storage type
+    using StorageFloat32 = StorageBase<float>;
+    using StorageFloat64 = StorageBase<double>;
+
 } // namespace synara
+
+#include "synara/tensor/storage.cpp.h"

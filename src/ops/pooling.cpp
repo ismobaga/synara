@@ -127,6 +127,9 @@ namespace synara
                                 const Tensor::value_type g = grad_output.data()[out_flat] /
                                                              static_cast<Tensor::value_type>(count);
 
+                                Tensor::value_type *grad_input_data = grad_input.data();
+                                const Size channel_base = ((b * c + ch) * h) * w;
+
                                 for (Size kh = 0; kh < kernel_h_; ++kh)
                                 {
                                     const long long ih = static_cast<long long>(oh * stride_h_ + kh) - static_cast<long long>(pad_h_);
@@ -135,6 +138,7 @@ namespace synara
                                         continue;
                                     }
 
+                                    const Size row_base = channel_base + static_cast<Size>(ih) * w;
                                     for (Size kw = 0; kw < kernel_w_; ++kw)
                                     {
                                         const long long iw = static_cast<long long>(ow * stride_w_ + kw) - static_cast<long long>(pad_w_);
@@ -143,7 +147,7 @@ namespace synara
                                             continue;
                                         }
 
-                                        grad_input.at({b, ch, static_cast<Size>(ih), static_cast<Size>(iw)}) += g;
+                                        grad_input_data[row_base + static_cast<Size>(iw)] += g;
                                     }
                                 }
 
@@ -221,46 +225,102 @@ namespace synara
         std::vector<Size> argmax(out.numel(), input.numel());
 
         Size out_flat = 0;
-        for (Size b = 0; b < n; ++b)
+        if (input.is_contiguous())
         {
-            for (Size ch = 0; ch < c; ++ch)
+            const Tensor::value_type *input_data = input.data();
+            Tensor::value_type *out_data = out.data();
+
+            for (Size b = 0; b < n; ++b)
             {
-                for (Size oh = 0; oh < h_out; ++oh)
+                for (Size ch = 0; ch < c; ++ch)
                 {
-                    for (Size ow = 0; ow < w_out; ++ow)
+                    const Size channel_base = ((b * c + ch) * h) * w;
+                    for (Size oh = 0; oh < h_out; ++oh)
                     {
-                        Tensor::value_type best = -std::numeric_limits<Tensor::value_type>::infinity();
-                        Size best_idx = input.numel();
-
-                        for (Size kh = 0; kh < kernel_h; ++kh)
+                        const long long ih_origin = static_cast<long long>(oh * stride_h) - static_cast<long long>(pad_h);
+                        for (Size ow = 0; ow < w_out; ++ow)
                         {
-                            const long long ih = static_cast<long long>(oh * stride_h + kh) - static_cast<long long>(pad_h);
-                            if (ih < 0 || ih >= static_cast<long long>(h))
-                            {
-                                continue;
-                            }
+                            const long long iw_origin = static_cast<long long>(ow * stride_w) - static_cast<long long>(pad_w);
+                            Tensor::value_type best = -std::numeric_limits<Tensor::value_type>::infinity();
+                            Size best_idx = input.numel();
 
-                            for (Size kw = 0; kw < kernel_w; ++kw)
+                            for (Size kh = 0; kh < kernel_h; ++kh)
                             {
-                                const long long iw = static_cast<long long>(ow * stride_w + kw) - static_cast<long long>(pad_w);
-                                if (iw < 0 || iw >= static_cast<long long>(w))
+                                const long long ih = ih_origin + static_cast<long long>(kh);
+                                if (ih < 0 || ih >= static_cast<long long>(h))
                                 {
                                     continue;
                                 }
 
-                                const Size ihs = static_cast<Size>(ih);
-                                const Size iws = static_cast<Size>(iw);
-                                const Tensor::value_type v = input.at({b, ch, ihs, iws});
-                                if (v > best)
+                                const Size row_base = channel_base + static_cast<Size>(ih) * w;
+                                for (Size kw = 0; kw < kernel_w; ++kw)
                                 {
-                                    best = v;
-                                    best_idx = ((b * c + ch) * h + ihs) * w + iws;
+                                    const long long iw = iw_origin + static_cast<long long>(kw);
+                                    if (iw < 0 || iw >= static_cast<long long>(w))
+                                    {
+                                        continue;
+                                    }
+
+                                    const Size idx = row_base + static_cast<Size>(iw);
+                                    const Tensor::value_type v = input_data[idx];
+                                    if (v > best)
+                                    {
+                                        best = v;
+                                        best_idx = idx;
+                                    }
                                 }
                             }
-                        }
 
-                        out.at({b, ch, oh, ow}) = best;
-                        argmax[out_flat++] = best_idx;
+                            out_data[out_flat] = best;
+                            argmax[out_flat++] = best_idx;
+                        }
+                    }
+                }
+            }
+        }
+        else
+        {
+            for (Size b = 0; b < n; ++b)
+            {
+                for (Size ch = 0; ch < c; ++ch)
+                {
+                    for (Size oh = 0; oh < h_out; ++oh)
+                    {
+                        for (Size ow = 0; ow < w_out; ++ow)
+                        {
+                            Tensor::value_type best = -std::numeric_limits<Tensor::value_type>::infinity();
+                            Size best_idx = input.numel();
+
+                            for (Size kh = 0; kh < kernel_h; ++kh)
+                            {
+                                const long long ih = static_cast<long long>(oh * stride_h + kh) - static_cast<long long>(pad_h);
+                                if (ih < 0 || ih >= static_cast<long long>(h))
+                                {
+                                    continue;
+                                }
+
+                                for (Size kw = 0; kw < kernel_w; ++kw)
+                                {
+                                    const long long iw = static_cast<long long>(ow * stride_w + kw) - static_cast<long long>(pad_w);
+                                    if (iw < 0 || iw >= static_cast<long long>(w))
+                                    {
+                                        continue;
+                                    }
+
+                                    const Size ihs = static_cast<Size>(ih);
+                                    const Size iws = static_cast<Size>(iw);
+                                    const Tensor::value_type v = input.at({b, ch, ihs, iws});
+                                    if (v > best)
+                                    {
+                                        best = v;
+                                        best_idx = ((b * c + ch) * h + ihs) * w + iws;
+                                    }
+                                }
+                            }
+
+                            out.at({b, ch, oh, ow}) = best;
+                            argmax[out_flat++] = best_idx;
+                        }
                     }
                 }
             }
@@ -322,41 +382,133 @@ namespace synara
         std::vector<Size> counts(out.numel(), 0);
 
         Size out_flat = 0;
-        for (Size b = 0; b < n; ++b)
+        if (input.is_contiguous())
         {
-            for (Size ch = 0; ch < c; ++ch)
+            const Tensor::value_type *input_data = input.data();
+            Tensor::value_type *out_data = out.data();
+
+            for (Size b = 0; b < n; ++b)
             {
-                for (Size oh = 0; oh < h_out; ++oh)
+                for (Size ch = 0; ch < c; ++ch)
                 {
-                    for (Size ow = 0; ow < w_out; ++ow)
+                    const Size channel_base = ((b * c + ch) * h) * w;
+                    for (Size oh = 0; oh < h_out; ++oh)
                     {
-                        Tensor::value_type acc = 0.0f;
-                        Size count = 0;
-
-                        for (Size kh = 0; kh < kernel_h; ++kh)
+                        const long long ih_origin = static_cast<long long>(oh * stride_h) - static_cast<long long>(pad_h);
+                        for (Size ow = 0; ow < w_out; ++ow)
                         {
-                            const long long ih = static_cast<long long>(oh * stride_h + kh) - static_cast<long long>(pad_h);
-                            if (ih < 0 || ih >= static_cast<long long>(h))
-                            {
-                                continue;
-                            }
+                            const long long iw_origin = static_cast<long long>(ow * stride_w) - static_cast<long long>(pad_w);
+                            Tensor::value_type acc = 0.0f;
+                            Size count = 0;
 
-                            for (Size kw = 0; kw < kernel_w; ++kw)
+                            for (Size kh = 0; kh < kernel_h; ++kh)
                             {
-                                const long long iw = static_cast<long long>(ow * stride_w + kw) - static_cast<long long>(pad_w);
-                                if (iw < 0 || iw >= static_cast<long long>(w))
+                                const long long ih = ih_origin + static_cast<long long>(kh);
+                                if (ih < 0 || ih >= static_cast<long long>(h))
                                 {
                                     continue;
                                 }
 
-                                acc += input.at({b, ch, static_cast<Size>(ih), static_cast<Size>(iw)});
-                                ++count;
-                            }
-                        }
+                                const Size row_base = channel_base + static_cast<Size>(ih) * w;
+                                Size kw = 0;
+                                for (; kw + 3 < kernel_w; kw += 4)
+                                {
+                                    const long long iw0 = iw_origin + static_cast<long long>(kw);
+                                    const long long iw1 = iw0 + 1;
+                                    const long long iw2 = iw0 + 2;
+                                    const long long iw3 = iw0 + 3;
 
-                        counts[out_flat] = count;
-                        out.data()[out_flat] = acc / static_cast<Tensor::value_type>(count);
-                        ++out_flat;
+                                    if (iw0 >= 0 && iw3 < static_cast<long long>(w))
+                                    {
+                                        acc += input_data[row_base + static_cast<Size>(iw0)];
+                                        acc += input_data[row_base + static_cast<Size>(iw1)];
+                                        acc += input_data[row_base + static_cast<Size>(iw2)];
+                                        acc += input_data[row_base + static_cast<Size>(iw3)];
+                                        count += 4;
+                                    }
+                                    else
+                                    {
+                                        if (iw0 >= 0 && iw0 < static_cast<long long>(w))
+                                        {
+                                            acc += input_data[row_base + static_cast<Size>(iw0)];
+                                            ++count;
+                                        }
+                                        if (iw1 >= 0 && iw1 < static_cast<long long>(w))
+                                        {
+                                            acc += input_data[row_base + static_cast<Size>(iw1)];
+                                            ++count;
+                                        }
+                                        if (iw2 >= 0 && iw2 < static_cast<long long>(w))
+                                        {
+                                            acc += input_data[row_base + static_cast<Size>(iw2)];
+                                            ++count;
+                                        }
+                                        if (iw3 >= 0 && iw3 < static_cast<long long>(w))
+                                        {
+                                            acc += input_data[row_base + static_cast<Size>(iw3)];
+                                            ++count;
+                                        }
+                                    }
+                                }
+                                for (; kw < kernel_w; ++kw)
+                                {
+                                    const long long iw = iw_origin + static_cast<long long>(kw);
+                                    if (iw < 0 || iw >= static_cast<long long>(w))
+                                    {
+                                        continue;
+                                    }
+
+                                    acc += input_data[row_base + static_cast<Size>(iw)];
+                                    ++count;
+                                }
+                            }
+
+                            counts[out_flat] = count;
+                            out_data[out_flat] = acc / static_cast<Tensor::value_type>(count);
+                            ++out_flat;
+                        }
+                    }
+                }
+            }
+        }
+        else
+        {
+            for (Size b = 0; b < n; ++b)
+            {
+                for (Size ch = 0; ch < c; ++ch)
+                {
+                    for (Size oh = 0; oh < h_out; ++oh)
+                    {
+                        for (Size ow = 0; ow < w_out; ++ow)
+                        {
+                            Tensor::value_type acc = 0.0f;
+                            Size count = 0;
+
+                            for (Size kh = 0; kh < kernel_h; ++kh)
+                            {
+                                const long long ih = static_cast<long long>(oh * stride_h + kh) - static_cast<long long>(pad_h);
+                                if (ih < 0 || ih >= static_cast<long long>(h))
+                                {
+                                    continue;
+                                }
+
+                                for (Size kw = 0; kw < kernel_w; ++kw)
+                                {
+                                    const long long iw = static_cast<long long>(ow * stride_w + kw) - static_cast<long long>(pad_w);
+                                    if (iw < 0 || iw >= static_cast<long long>(w))
+                                    {
+                                        continue;
+                                    }
+
+                                    acc += input.at({b, ch, static_cast<Size>(ih), static_cast<Size>(iw)});
+                                    ++count;
+                                }
+                            }
+
+                            counts[out_flat] = count;
+                            out.data()[out_flat] = acc / static_cast<Tensor::value_type>(count);
+                            ++out_flat;
+                        }
                     }
                 }
             }

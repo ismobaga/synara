@@ -1,5 +1,6 @@
 #include "synara/ops/convolution.hpp"
 
+#include <algorithm>
 #include <memory>
 
 #include "synara/autograd/node.hpp"
@@ -305,48 +306,155 @@ namespace synara
 
             Tensor out = Tensor::zeros(Shape({n, c_out, h_out, w_out}), requires_grad);
 
-            for (Size b = 0; b < n; ++b)
+            if (input.is_contiguous() && weight.is_contiguous() && (!use_bias || bias->is_contiguous()))
             {
-                for (Size co = 0; co < c_out; ++co)
-                {
-                    const Size gidx = co / c_out_per_group;
-                    const Size ci_start = gidx * c_in_per_group;
-                    for (Size oh = 0; oh < h_out; ++oh)
-                    {
-                        for (Size ow = 0; ow < w_out; ++ow)
-                        {
-                            Tensor::value_type acc = 0.0f;
-                            for (Size ci_local = 0; ci_local < c_in_per_group; ++ci_local)
-                            {
-                                const Size ci = ci_start + ci_local;
-                                for (Size kh = 0; kh < k_h; ++kh)
-                                {
-                                    const long long ih = static_cast<long long>(oh * cfg.stride_h + kh * cfg.dilation_h) - static_cast<long long>(cfg.pad_h);
-                                    if (ih < 0 || ih >= static_cast<long long>(h_in))
-                                    {
-                                        continue;
-                                    }
+                const Tensor::value_type *input_data = input.data();
+                const Tensor::value_type *weight_data = weight.data();
+                const Tensor::value_type *bias_data = use_bias ? bias->data() : nullptr;
+                Tensor::value_type *out_data = out.data();
 
-                                    for (Size kw = 0; kw < k_w; ++kw)
+                const Size input_batch_stride = c_in * h_in * w_in;
+                const Size input_channel_stride = h_in * w_in;
+                const Size weight_out_stride = c_in_per_group * k_h * k_w;
+                const Size weight_channel_stride = k_h * k_w;
+                const Size out_batch_stride = c_out * h_out * w_out;
+                const Size out_channel_stride = h_out * w_out;
+
+                for (Size b = 0; b < n; ++b)
+                {
+                    const Size input_batch_base = b * input_batch_stride;
+                    const Size out_batch_base = b * out_batch_stride;
+
+                    for (Size co = 0; co < c_out; ++co)
+                    {
+                        const Size gidx = co / c_out_per_group;
+                        const Size ci_start = gidx * c_in_per_group;
+                        const Size weight_out_base = co * weight_out_stride;
+                        const Size out_channel_base = out_batch_base + co * out_channel_stride;
+
+                        for (Size oh = 0; oh < h_out; ++oh)
+                        {
+                            const long long ih_origin = static_cast<long long>(oh * cfg.stride_h) - static_cast<long long>(cfg.pad_h);
+
+                            for (Size ow = 0; ow < w_out; ++ow)
+                            {
+                                const long long iw_origin = static_cast<long long>(ow * cfg.stride_w) - static_cast<long long>(cfg.pad_w);
+                                Tensor::value_type acc = use_bias ? bias_data[co] : 0.0f;
+
+                                for (Size ci_local = 0; ci_local < c_in_per_group; ++ci_local)
+                                {
+                                    const Size ci = ci_start + ci_local;
+                                    const Size input_channel_base = input_batch_base + ci * input_channel_stride;
+                                    const Size weight_channel_base = weight_out_base + ci_local * weight_channel_stride;
+
+                                    for (Size kh = 0; kh < k_h; ++kh)
                                     {
-                                        const long long iw = static_cast<long long>(ow * cfg.stride_w + kw * cfg.dilation_w) - static_cast<long long>(cfg.pad_w);
-                                        if (iw < 0 || iw >= static_cast<long long>(w_in))
+                                        const long long ih = ih_origin + static_cast<long long>(kh * cfg.dilation_h);
+                                        if (ih < 0 || ih >= static_cast<long long>(h_in))
                                         {
                                             continue;
                                         }
 
-                                        acc += input.at({b, ci, static_cast<Size>(ih), static_cast<Size>(iw)}) *
-                                               weight.at({co, ci_local, kh, kw});
+                                        const Size input_row_base = input_channel_base + static_cast<Size>(ih) * w_in;
+                                        const Size weight_row_base = weight_channel_base + kh * k_w;
+
+                                        if (cfg.dilation_w == 1)
+                                        {
+                                            const Size kw_begin = iw_origin < 0 ? static_cast<Size>(-iw_origin) : 0;
+                                            const long long kw_limit_ll = static_cast<long long>(w_in) - iw_origin;
+                                            const Size kw_end = kw_limit_ll <= 0
+                                                                    ? 0
+                                                                    : std::min<Size>(k_w, static_cast<Size>(kw_limit_ll));
+
+                                            if (kw_begin >= kw_end)
+                                            {
+                                                continue;
+                                            }
+
+                                            const Tensor::value_type *input_row = input_data + input_row_base + static_cast<Size>(iw_origin + static_cast<long long>(kw_begin));
+                                            const Tensor::value_type *weight_row = weight_data + weight_row_base + kw_begin;
+                                            Size kw = kw_begin;
+                                            for (; kw + 3 < kw_end; kw += 4)
+                                            {
+                                                const Size local = kw - kw_begin;
+                                                acc += input_row[local] * weight_row[local];
+                                                acc += input_row[local + 1] * weight_row[local + 1];
+                                                acc += input_row[local + 2] * weight_row[local + 2];
+                                                acc += input_row[local + 3] * weight_row[local + 3];
+                                            }
+                                            for (; kw < kw_end; ++kw)
+                                            {
+                                                acc += input_row[kw - kw_begin] * weight_row[kw - kw_begin];
+                                            }
+                                        }
+                                        else
+                                        {
+                                            for (Size kw = 0; kw < k_w; ++kw)
+                                            {
+                                                const long long iw = iw_origin + static_cast<long long>(kw * cfg.dilation_w);
+                                                if (iw < 0 || iw >= static_cast<long long>(w_in))
+                                                {
+                                                    continue;
+                                                }
+
+                                                acc += input_data[input_row_base + static_cast<Size>(iw)] *
+                                                       weight_data[weight_row_base + kw];
+                                            }
+                                        }
                                     }
                                 }
-                            }
 
-                            if (use_bias)
+                                out_data[out_channel_base + oh * w_out + ow] = acc;
+                            }
+                        }
+                    }
+                }
+            }
+            else
+            {
+                for (Size b = 0; b < n; ++b)
+                {
+                    for (Size co = 0; co < c_out; ++co)
+                    {
+                        const Size gidx = co / c_out_per_group;
+                        const Size ci_start = gidx * c_in_per_group;
+                        for (Size oh = 0; oh < h_out; ++oh)
+                        {
+                            for (Size ow = 0; ow < w_out; ++ow)
                             {
-                                acc += bias_value(*bias, co);
-                            }
+                                Tensor::value_type acc = 0.0f;
+                                for (Size ci_local = 0; ci_local < c_in_per_group; ++ci_local)
+                                {
+                                    const Size ci = ci_start + ci_local;
+                                    for (Size kh = 0; kh < k_h; ++kh)
+                                    {
+                                        const long long ih = static_cast<long long>(oh * cfg.stride_h + kh * cfg.dilation_h) - static_cast<long long>(cfg.pad_h);
+                                        if (ih < 0 || ih >= static_cast<long long>(h_in))
+                                        {
+                                            continue;
+                                        }
 
-                            out.at({b, co, oh, ow}) = acc;
+                                        for (Size kw = 0; kw < k_w; ++kw)
+                                        {
+                                            const long long iw = static_cast<long long>(ow * cfg.stride_w + kw * cfg.dilation_w) - static_cast<long long>(cfg.pad_w);
+                                            if (iw < 0 || iw >= static_cast<long long>(w_in))
+                                            {
+                                                continue;
+                                            }
+
+                                            acc += input.at({b, ci, static_cast<Size>(ih), static_cast<Size>(iw)}) *
+                                                   weight.at({co, ci_local, kh, kw});
+                                        }
+                                    }
+                                }
+
+                                if (use_bias)
+                                {
+                                    acc += bias_value(*bias, co);
+                                }
+
+                                out.at({b, co, oh, ow}) = acc;
+                            }
                         }
                     }
                 }

@@ -2,6 +2,8 @@
 
 #include <memory>
 #include <stdexcept>
+
+#include "synara/core/parallel.hpp"
 #include <string>
 #include <utility>
 
@@ -18,7 +20,7 @@ namespace synara
             return static_cast<long long>(batch) *
                        static_cast<long long>(out_features) *
                        static_cast<long long>(in_features) >=
-                   (1LL << 14);
+                   static_cast<long long>(parallel_config().linear_threshold);
         }
 
         class LinearNode : public Node

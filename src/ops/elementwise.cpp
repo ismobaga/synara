@@ -1,5 +1,6 @@
 #include "synara/ops/elementwise.hpp"
 #include "synara/autograd/nodes.hpp"
+#include "synara/core/parallel.hpp"
 
 #include <cmath>
 #if defined(__SSE2__)
@@ -90,7 +91,8 @@ namespace synara
 
         bool should_parallelize_elementwise(Size numel)
         {
-            return static_cast<long long>(numel) >= (1LL << 15);
+            return static_cast<long long>(numel) >=
+                   static_cast<long long>(parallel_config().elementwise_threshold);
         }
 
         static Tensor unary_scalar_op(const Tensor &a, Tensor::value_type scalar, ScalarOpKind kind)

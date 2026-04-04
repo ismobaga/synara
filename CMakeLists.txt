@@ -15,6 +15,7 @@ add_library(synara_tensor
 	src/tensor/storage.cpp
 	src/tensor/strides.cpp
 	src/tensor/tensor.cpp
+	src/core/parallel.cpp
 	src/nn/module.cpp
 	src/nn/module_utils.cpp
 	src/nn/linear.cpp

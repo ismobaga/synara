@@ -49,6 +49,25 @@ cmake -S . -B build
 cmake --build build -j
 ```
 
+Optional threaded kernels via OpenMP:
+
+```bash
+cmake -S . -B build -DSYNARA_ENABLE_OPENMP=ON
+cmake --build build -j
+```
+
+Runtime thread/tuning control:
+
+```cpp
+using namespace synara;
+
+set_num_threads(4);
+ParallelConfig tuned = parallel_config();
+tuned.conv2d_threshold = 1 << 15;
+tuned.linear_threshold = 1 << 15;
+set_parallel_config(tuned);
+```
+
 ## Run Tests
 
 ```bash

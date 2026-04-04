@@ -1,6 +1,7 @@
 #include "synara/ops/linalg.hpp"
 #include "synara/autograd/nodes.hpp"
 #include "synara/core/error.hpp"
+#include "synara/core/parallel.hpp"
 
 #include <algorithm>
 #include <stdexcept>
@@ -15,7 +16,7 @@ namespace synara
             return static_cast<long long>(m) *
                        static_cast<long long>(k) *
                        static_cast<long long>(n) >=
-                   (1LL << 15);
+                   static_cast<long long>(parallel_config().matmul_threshold);
         }
 
         Tensor matmul_contiguous(const Tensor &a, const Tensor &b, Size m, Size k, Size n)

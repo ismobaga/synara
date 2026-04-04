@@ -5,6 +5,7 @@
 
 #include "synara/autograd/node.hpp"
 #include "synara/core/error.hpp"
+#include "synara/core/parallel.hpp"
 
 namespace synara
 {
@@ -40,6 +41,14 @@ namespace synara
             return (bias.rank() == 1) ? bias.at({c}) : bias.at({0, c});
         }
 
+        bool should_parallelize_conv2d(Size n,
+                                       Size c_out,
+                                       Size h_out,
+                                       Size w_out,
+                                       Size c_in_per_group,
+                                       Size k_h,
+                                       Size k_w);
+
         class Conv2dNode : public Node
         {
         public:
@@ -72,14 +81,7 @@ namespace synara
                 const Size h_out = grad_output.shape()[2];
                 const Size w_out = grad_output.shape()[3];
                 const bool parallel =
-                    static_cast<long long>(n) *
-                        static_cast<long long>(c_out) *
-                        static_cast<long long>(h_out) *
-                        static_cast<long long>(w_out) *
-                        static_cast<long long>(c_in_per_group) *
-                        static_cast<long long>(k_h) *
-                        static_cast<long long>(k_w) >=
-                    (1LL << 17);
+                    should_parallelize_conv2d(n, c_out, h_out, w_out, c_in_per_group, k_h, k_w);
 
                 if (input_.requires_grad())
                 {
@@ -281,7 +283,7 @@ namespace synara
                        static_cast<long long>(c_in_per_group) *
                        static_cast<long long>(k_h) *
                        static_cast<long long>(k_w) >=
-                   (1LL << 17);
+                   static_cast<long long>(parallel_config().conv2d_threshold);
         }
 
         void validate_conv2d_shapes(const Tensor &input, const Tensor &weight, const Conv2dConfig &cfg)

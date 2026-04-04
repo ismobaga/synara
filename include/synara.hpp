@@ -4,6 +4,9 @@
 #include "synara/tensor/tensor.hpp"
 #include "synara/tensor/tensor_types.hpp"
 
+// Core
+#include "synara/core/parallel.hpp"
+
 // Autograd
 #include "synara/autograd/node.hpp"
 #include "synara/autograd/nodes.hpp"

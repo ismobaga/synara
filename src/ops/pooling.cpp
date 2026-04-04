@@ -6,6 +6,7 @@
 
 #include "synara/autograd/node.hpp"
 #include "synara/core/error.hpp"
+#include "synara/core/parallel.hpp"
 
 namespace synara
 {
@@ -35,7 +36,7 @@ namespace synara
                        static_cast<long long>(w_out) *
                        static_cast<long long>(kernel_h) *
                        static_cast<long long>(kernel_w) >=
-                   (1LL << 15);
+                   static_cast<long long>(parallel_config().pooling_threshold);
         }
 
         class MaxPool2dNode : public Node

@@ -59,6 +59,7 @@ namespace synara
             void backward(const Tensor &grad_output) override
             {
                 const Size n = input_.shape()[0];
+                const Size c_in = input_.shape()[1];
                 const Size h_in = input_.shape()[2];
                 const Size w_in = input_.shape()[3];
 
@@ -70,46 +71,81 @@ namespace synara
 
                 const Size h_out = grad_output.shape()[2];
                 const Size w_out = grad_output.shape()[3];
+                const bool parallel =
+                    static_cast<long long>(n) *
+                        static_cast<long long>(c_out) *
+                        static_cast<long long>(h_out) *
+                        static_cast<long long>(w_out) *
+                        static_cast<long long>(c_in_per_group) *
+                        static_cast<long long>(k_h) *
+                        static_cast<long long>(k_w) >=
+                    (1LL << 17);
 
                 if (input_.requires_grad())
                 {
                     Tensor grad_input = Tensor::zeros(input_.shape(), false);
 
-                    for (Size b = 0; b < n; ++b)
+#if defined(SYNARA_USE_OPENMP)
+#pragma omp parallel for collapse(2) if (parallel) schedule(static)
+#endif
+                    for (long long batch = 0; batch < static_cast<long long>(n); ++batch)
                     {
-                        for (Size co = 0; co < c_out; ++co)
+                        for (long long channel = 0; channel < static_cast<long long>(c_in); ++channel)
                         {
-                            const Size gidx = co / c_out_per_group;
-                            const Size ci_start = gidx * c_in_per_group;
-                            for (Size oh = 0; oh < h_out; ++oh)
+                            const Size b = static_cast<Size>(batch);
+                            const Size ci = static_cast<Size>(channel);
+                            const Size gidx = ci / c_in_per_group;
+                            const Size ci_local = ci - gidx * c_in_per_group;
+                            const Size co_start = gidx * c_out_per_group;
+                            const Size co_end = co_start + c_out_per_group;
+
+                            for (Size ih = 0; ih < h_in; ++ih)
                             {
-                                for (Size ow = 0; ow < w_out; ++ow)
+                                for (Size iw = 0; iw < w_in; ++iw)
                                 {
-                                    const Tensor::value_type g = grad_output.at({b, co, oh, ow});
-                                    for (Size ci_local = 0; ci_local < c_in_per_group; ++ci_local)
+                                    Tensor::value_type acc = 0.0f;
+
+                                    for (Size co = co_start; co < co_end; ++co)
                                     {
-                                        const Size ci = ci_start + ci_local;
                                         for (Size kh = 0; kh < k_h; ++kh)
                                         {
-                                            const long long ih = static_cast<long long>(oh * cfg_.stride_h + kh * cfg_.dilation_h) - static_cast<long long>(cfg_.pad_h);
-                                            if (ih < 0 || ih >= static_cast<long long>(h_in))
+                                            const long long oh_num =
+                                                static_cast<long long>(ih) + static_cast<long long>(cfg_.pad_h) -
+                                                static_cast<long long>(kh * cfg_.dilation_h);
+                                            if (oh_num < 0 || oh_num % static_cast<long long>(cfg_.stride_h) != 0)
+                                            {
+                                                continue;
+                                            }
+
+                                            const long long oh = oh_num / static_cast<long long>(cfg_.stride_h);
+                                            if (oh < 0 || oh >= static_cast<long long>(h_out))
                                             {
                                                 continue;
                                             }
 
                                             for (Size kw = 0; kw < k_w; ++kw)
                                             {
-                                                const long long iw = static_cast<long long>(ow * cfg_.stride_w + kw * cfg_.dilation_w) - static_cast<long long>(cfg_.pad_w);
-                                                if (iw < 0 || iw >= static_cast<long long>(w_in))
+                                                const long long ow_num =
+                                                    static_cast<long long>(iw) + static_cast<long long>(cfg_.pad_w) -
+                                                    static_cast<long long>(kw * cfg_.dilation_w);
+                                                if (ow_num < 0 || ow_num % static_cast<long long>(cfg_.stride_w) != 0)
                                                 {
                                                     continue;
                                                 }
 
-                                                grad_input.at({b, ci, static_cast<Size>(ih), static_cast<Size>(iw)}) +=
-                                                    g * weight_.at({co, ci_local, kh, kw});
+                                                const long long ow = ow_num / static_cast<long long>(cfg_.stride_w);
+                                                if (ow < 0 || ow >= static_cast<long long>(w_out))
+                                                {
+                                                    continue;
+                                                }
+
+                                                acc += grad_output.at({b, co, static_cast<Size>(oh), static_cast<Size>(ow)}) *
+                                                       weight_.at({co, ci_local, kh, kw});
                                             }
                                         }
                                     }
+
+                                    grad_input.at({b, ci, ih, iw}) = acc;
                                 }
                             }
                         }
@@ -126,41 +162,50 @@ namespace synara
                 {
                     Tensor grad_weight = Tensor::zeros(weight_.shape(), false);
 
-                    for (Size b = 0; b < n; ++b)
+#if defined(SYNARA_USE_OPENMP)
+#pragma omp parallel for if (parallel) schedule(static)
+#endif
+                    for (long long out_channel = 0; out_channel < static_cast<long long>(c_out); ++out_channel)
                     {
-                        for (Size co = 0; co < c_out; ++co)
+                        const Size co = static_cast<Size>(out_channel);
+                        const Size gidx = co / c_out_per_group;
+                        const Size ci_start = gidx * c_in_per_group;
+
+                        for (Size ci_local = 0; ci_local < c_in_per_group; ++ci_local)
                         {
-                            const Size gidx = co / c_out_per_group;
-                            const Size ci_start = gidx * c_in_per_group;
-                            for (Size oh = 0; oh < h_out; ++oh)
+                            const Size ci = ci_start + ci_local;
+                            for (Size kh = 0; kh < k_h; ++kh)
                             {
-                                for (Size ow = 0; ow < w_out; ++ow)
+                                for (Size kw = 0; kw < k_w; ++kw)
                                 {
-                                    const Tensor::value_type g = grad_output.at({b, co, oh, ow});
-                                    for (Size ci_local = 0; ci_local < c_in_per_group; ++ci_local)
+                                    Tensor::value_type acc = 0.0f;
+                                    for (Size b = 0; b < n; ++b)
                                     {
-                                        const Size ci = ci_start + ci_local;
-                                        for (Size kh = 0; kh < k_h; ++kh)
+                                        for (Size oh = 0; oh < h_out; ++oh)
                                         {
-                                            const long long ih = static_cast<long long>(oh * cfg_.stride_h + kh * cfg_.dilation_h) - static_cast<long long>(cfg_.pad_h);
+                                            const long long ih = static_cast<long long>(oh * cfg_.stride_h + kh * cfg_.dilation_h) -
+                                                                 static_cast<long long>(cfg_.pad_h);
                                             if (ih < 0 || ih >= static_cast<long long>(h_in))
                                             {
                                                 continue;
                                             }
 
-                                            for (Size kw = 0; kw < k_w; ++kw)
+                                            for (Size ow = 0; ow < w_out; ++ow)
                                             {
-                                                const long long iw = static_cast<long long>(ow * cfg_.stride_w + kw * cfg_.dilation_w) - static_cast<long long>(cfg_.pad_w);
+                                                const long long iw = static_cast<long long>(ow * cfg_.stride_w + kw * cfg_.dilation_w) -
+                                                                     static_cast<long long>(cfg_.pad_w);
                                                 if (iw < 0 || iw >= static_cast<long long>(w_in))
                                                 {
                                                     continue;
                                                 }
 
-                                                grad_weight.at({co, ci_local, kh, kw}) +=
-                                                    g * input_.at({b, ci, static_cast<Size>(ih), static_cast<Size>(iw)});
+                                                acc += grad_output.at({b, co, oh, ow}) *
+                                                       input_.at({b, ci, static_cast<Size>(ih), static_cast<Size>(iw)});
                                             }
                                         }
                                     }
+
+                                    grad_weight.at({co, ci_local, kh, kw}) = acc;
                                 }
                             }
                         }
@@ -176,11 +221,16 @@ namespace synara
                 if (use_bias_ && bias_.requires_grad())
                 {
                     Tensor grad_bias = Tensor::zeros(bias_.shape(), false);
-                    for (Size b = 0; b < n; ++b)
+
+#if defined(SYNARA_USE_OPENMP)
+#pragma omp parallel for if (parallel) schedule(static)
+#endif
+                    for (long long out_channel = 0; out_channel < static_cast<long long>(c_out); ++out_channel)
                     {
-                        for (Size co = 0; co < c_out; ++co)
+                        const Size co = static_cast<Size>(out_channel);
+                        Tensor::value_type acc = 0.0f;
+                        for (Size b = 0; b < n; ++b)
                         {
-                            Tensor::value_type acc = 0.0f;
                             for (Size oh = 0; oh < h_out; ++oh)
                             {
                                 for (Size ow = 0; ow < w_out; ++ow)
@@ -188,15 +238,15 @@ namespace synara
                                     acc += grad_output.at({b, co, oh, ow});
                                 }
                             }
+                        }
 
-                            if (grad_bias.rank() == 1)
-                            {
-                                grad_bias.at({co}) += acc;
-                            }
-                            else
-                            {
-                                grad_bias.at({0, co}) += acc;
-                            }
+                        if (grad_bias.rank() == 1)
+                        {
+                            grad_bias.at({co}) = acc;
+                        }
+                        else
+                        {
+                            grad_bias.at({0, co}) = acc;
                         }
                     }
 
@@ -215,6 +265,24 @@ namespace synara
             bool use_bias_;
             Conv2dConfig cfg_;
         };
+
+        bool should_parallelize_conv2d(Size n,
+                                       Size c_out,
+                                       Size h_out,
+                                       Size w_out,
+                                       Size c_in_per_group,
+                                       Size k_h,
+                                       Size k_w)
+        {
+            return static_cast<long long>(n) *
+                       static_cast<long long>(c_out) *
+                       static_cast<long long>(h_out) *
+                       static_cast<long long>(w_out) *
+                       static_cast<long long>(c_in_per_group) *
+                       static_cast<long long>(k_h) *
+                       static_cast<long long>(k_w) >=
+                   (1LL << 17);
+        }
 
         void validate_conv2d_shapes(const Tensor &input, const Tensor &weight, const Conv2dConfig &cfg)
         {
@@ -303,6 +371,14 @@ namespace synara
             const bool use_bias = (bias != nullptr);
             const bool requires_grad =
                 input.requires_grad() || weight.requires_grad() || (use_bias && bias->requires_grad());
+            const bool parallel = should_parallelize_conv2d(
+                n,
+                c_out,
+                h_out,
+                w_out,
+                c_in_per_group,
+                k_h,
+                k_w);
 
             Tensor out = Tensor::zeros(Shape({n, c_out, h_out, w_out}), requires_grad);
 
@@ -320,17 +396,21 @@ namespace synara
                 const Size out_batch_stride = c_out * h_out * w_out;
                 const Size out_channel_stride = h_out * w_out;
 
-                for (Size b = 0; b < n; ++b)
+#if defined(SYNARA_USE_OPENMP)
+#pragma omp parallel for collapse(2) if (parallel) schedule(static)
+#endif
+                for (long long b = 0; b < static_cast<long long>(n); ++b)
                 {
-                    const Size input_batch_base = b * input_batch_stride;
-                    const Size out_batch_base = b * out_batch_stride;
-
-                    for (Size co = 0; co < c_out; ++co)
+                    for (long long co = 0; co < static_cast<long long>(c_out); ++co)
                     {
-                        const Size gidx = co / c_out_per_group;
+                        const Size batch_index = static_cast<Size>(b);
+                        const Size out_channel_index = static_cast<Size>(co);
+                        const Size input_batch_base = batch_index * input_batch_stride;
+                        const Size out_batch_base = batch_index * out_batch_stride;
+                        const Size gidx = out_channel_index / c_out_per_group;
                         const Size ci_start = gidx * c_in_per_group;
-                        const Size weight_out_base = co * weight_out_stride;
-                        const Size out_channel_base = out_batch_base + co * out_channel_stride;
+                        const Size weight_out_base = out_channel_index * weight_out_stride;
+                        const Size out_channel_base = out_batch_base + out_channel_index * out_channel_stride;
 
                         for (Size oh = 0; oh < h_out; ++oh)
                         {
@@ -339,7 +419,7 @@ namespace synara
                             for (Size ow = 0; ow < w_out; ++ow)
                             {
                                 const long long iw_origin = static_cast<long long>(ow * cfg.stride_w) - static_cast<long long>(cfg.pad_w);
-                                Tensor::value_type acc = use_bias ? bias_data[co] : 0.0f;
+                                Tensor::value_type acc = use_bias ? bias_data[out_channel_index] : 0.0f;
 
                                 for (Size ci_local = 0; ci_local < c_in_per_group; ++ci_local)
                                 {
@@ -412,11 +492,16 @@ namespace synara
             }
             else
             {
-                for (Size b = 0; b < n; ++b)
+#if defined(SYNARA_USE_OPENMP)
+#pragma omp parallel for collapse(2) if (parallel) schedule(static)
+#endif
+                for (long long b = 0; b < static_cast<long long>(n); ++b)
                 {
-                    for (Size co = 0; co < c_out; ++co)
+                    for (long long co = 0; co < static_cast<long long>(c_out); ++co)
                     {
-                        const Size gidx = co / c_out_per_group;
+                        const Size batch_index = static_cast<Size>(b);
+                        const Size out_channel_index = static_cast<Size>(co);
+                        const Size gidx = out_channel_index / c_out_per_group;
                         const Size ci_start = gidx * c_in_per_group;
                         for (Size oh = 0; oh < h_out; ++oh)
                         {
@@ -442,18 +527,18 @@ namespace synara
                                                 continue;
                                             }
 
-                                            acc += input.at({b, ci, static_cast<Size>(ih), static_cast<Size>(iw)}) *
-                                                   weight.at({co, ci_local, kh, kw});
+                                            acc += input.at({batch_index, ci, static_cast<Size>(ih), static_cast<Size>(iw)}) *
+                                                   weight.at({out_channel_index, ci_local, kh, kw});
                                         }
                                     }
                                 }
 
                                 if (use_bias)
                                 {
-                                    acc += bias_value(*bias, co);
+                                    acc += bias_value(*bias, out_channel_index);
                                 }
 
-                                out.at({b, co, oh, ow}) = acc;
+                                out.at({batch_index, out_channel_index, oh, ow}) = acc;
                             }
                         }
                     }

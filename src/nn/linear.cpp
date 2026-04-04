@@ -13,6 +13,14 @@ namespace synara
     namespace
     {
 
+        bool should_parallelize_linear(Size batch, Size out_features, Size in_features)
+        {
+            return static_cast<long long>(batch) *
+                       static_cast<long long>(out_features) *
+                       static_cast<long long>(in_features) >=
+                   (1LL << 14);
+        }
+
         class LinearNode : public Node
         {
         public:
@@ -30,6 +38,7 @@ namespace synara
                 const bool fast_path =
                     grad_output.is_contiguous() && input_.is_contiguous() && weight_.is_contiguous() &&
                     (!use_bias_ || bias_.is_contiguous());
+                const bool parallel = should_parallelize_linear(batch, out_features, in_features);
 
                 if (input_.requires_grad())
                 {
@@ -41,8 +50,12 @@ namespace synara
                         const Tensor::value_type *w = weight_.data();
                         Tensor::value_type *gi = grad_input.data();
 
-                        for (Size n = 0; n < batch; ++n)
+#if defined(SYNARA_USE_OPENMP)
+#pragma omp parallel for if (parallel) schedule(static)
+#endif
+                        for (long long sample = 0; sample < static_cast<long long>(batch); ++sample)
                         {
+                            const Size n = static_cast<Size>(sample);
                             const Tensor::value_type *go_row = go + n * out_features;
                             Tensor::value_type *gi_row = gi + n * in_features;
 
@@ -59,8 +72,12 @@ namespace synara
                     }
                     else
                     {
-                        for (Size n = 0; n < batch; ++n)
+#if defined(SYNARA_USE_OPENMP)
+#pragma omp parallel for if (parallel) schedule(static)
+#endif
+                        for (long long sample = 0; sample < static_cast<long long>(batch); ++sample)
                         {
+                            const Size n = static_cast<Size>(sample);
                             for (Size i = 0; i < in_features; ++i)
                             {
                                 Tensor::value_type acc = 0.0f;
@@ -90,8 +107,12 @@ namespace synara
                         const Tensor::value_type *x = input_.data();
                         Tensor::value_type *gw = grad_weight.data();
 
-                        for (Size o = 0; o < out_features; ++o)
+#if defined(SYNARA_USE_OPENMP)
+#pragma omp parallel for if (parallel) schedule(static)
+#endif
+                        for (long long out_index = 0; out_index < static_cast<long long>(out_features); ++out_index)
                         {
+                            const Size o = static_cast<Size>(out_index);
                             Tensor::value_type *gw_row = gw + o * in_features;
                             for (Size n = 0; n < batch; ++n)
                             {
@@ -106,8 +127,12 @@ namespace synara
                     }
                     else
                     {
-                        for (Size o = 0; o < out_features; ++o)
+#if defined(SYNARA_USE_OPENMP)
+#pragma omp parallel for if (parallel) schedule(static)
+#endif
+                        for (long long out_index = 0; out_index < static_cast<long long>(out_features); ++out_index)
                         {
+                            const Size o = static_cast<Size>(out_index);
                             for (Size i = 0; i < in_features; ++i)
                             {
                                 Tensor::value_type acc = 0.0f;
@@ -130,29 +155,40 @@ namespace synara
                 if (use_bias_ && bias_.requires_grad())
                 {
                     Tensor grad_bias = Tensor::zeros(bias_.shape(), false);
+                    Tensor::value_type *gb = grad_bias.data();
 
                     if (fast_path)
                     {
                         const Tensor::value_type *go = grad_output.data();
-                        Tensor::value_type *gb = grad_bias.data();
 
-                        for (Size n = 0; n < batch; ++n)
+#if defined(SYNARA_USE_OPENMP)
+#pragma omp parallel for if (parallel) schedule(static)
+#endif
+                        for (long long out_index = 0; out_index < static_cast<long long>(out_features); ++out_index)
                         {
-                            const Tensor::value_type *go_row = go + n * out_features;
-                            for (Size o = 0; o < out_features; ++o)
+                            const Size o = static_cast<Size>(out_index);
+                            Tensor::value_type acc = 0.0f;
+                            for (Size n = 0; n < batch; ++n)
                             {
-                                gb[o] += go_row[o];
+                                acc += go[n * out_features + o];
                             }
+                            gb[o] = acc;
                         }
                     }
                     else
                     {
-                        for (Size n = 0; n < batch; ++n)
+#if defined(SYNARA_USE_OPENMP)
+#pragma omp parallel for if (parallel) schedule(static)
+#endif
+                        for (long long out_index = 0; out_index < static_cast<long long>(out_features); ++out_index)
                         {
-                            for (Size o = 0; o < out_features; ++o)
+                            const Size o = static_cast<Size>(out_index);
+                            Tensor::value_type acc = 0.0f;
+                            for (Size n = 0; n < batch; ++n)
                             {
-                                grad_bias.at({0, o}) += grad_output.at({n, o});
+                                acc += grad_output.at({n, o});
                             }
+                            grad_bias.at({0, o}) = acc;
                         }
                     }
 
@@ -195,6 +231,7 @@ namespace synara
         const Tensor &bias_tensor = bias_.tensor();
         const bool requires_grad =
             input.requires_grad() || weight_.requires_grad() || (use_bias_ && bias_.requires_grad());
+        const bool parallel = should_parallelize_linear(input.shape()[0], out_features_, in_features_);
 
         Tensor output = Tensor::zeros(Shape({input.shape()[0], out_features_}), requires_grad);
 
@@ -205,8 +242,12 @@ namespace synara
             const Tensor::value_type *b = use_bias_ ? bias_tensor.data() : nullptr;
             Tensor::value_type *y = output.data();
 
-            for (Size n = 0; n < input.shape()[0]; ++n)
+#if defined(SYNARA_USE_OPENMP)
+#pragma omp parallel for if (parallel) schedule(static)
+#endif
+            for (long long sample = 0; sample < static_cast<long long>(input.shape()[0]); ++sample)
             {
+                const Size n = static_cast<Size>(sample);
                 const Tensor::value_type *x_row = x + n * in_features_;
                 Tensor::value_type *y_row = y + n * out_features_;
 
@@ -234,8 +275,12 @@ namespace synara
         }
         else
         {
-            for (Size n = 0; n < input.shape()[0]; ++n)
+#if defined(SYNARA_USE_OPENMP)
+#pragma omp parallel for if (parallel) schedule(static)
+#endif
+            for (long long sample = 0; sample < static_cast<long long>(input.shape()[0]); ++sample)
             {
+                const Size n = static_cast<Size>(sample);
                 for (Size o = 0; o < out_features_; ++o)
                 {
                     Tensor::value_type acc = 0.0f;

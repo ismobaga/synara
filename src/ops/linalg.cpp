@@ -10,6 +10,14 @@ namespace synara
 {
     namespace
     {
+        bool should_parallelize_matmul(Size m, Size k, Size n)
+        {
+            return static_cast<long long>(m) *
+                       static_cast<long long>(k) *
+                       static_cast<long long>(n) >=
+                   (1LL << 15);
+        }
+
         Tensor matmul_contiguous(const Tensor &a, const Tensor &b, Size m, Size k, Size n)
         {
             Tensor out = Tensor::zeros(Shape({m, n}));
@@ -17,11 +25,16 @@ namespace synara
             const Tensor::value_type *a_data = a.data();
             const Tensor::value_type *b_data = b.data();
             Tensor::value_type *out_data = out.data();
+            const bool parallel = should_parallelize_matmul(m, k, n);
 
-            for (Size i = 0; i < m; ++i)
+#if defined(SYNARA_USE_OPENMP)
+#pragma omp parallel for if (parallel) schedule(static)
+#endif
+            for (long long i = 0; i < static_cast<long long>(m); ++i)
             {
-                const Tensor::value_type *a_row = a_data + i * k;
-                Tensor::value_type *out_row = out_data + i * n;
+                const Size row = static_cast<Size>(i);
+                const Tensor::value_type *a_row = a_data + row * k;
+                Tensor::value_type *out_row = out_data + row * n;
 
                 for (Size kk = 0; kk < k; ++kk)
                 {
@@ -52,11 +65,16 @@ namespace synara
             const Size a_col_stride = a_strides[1];
             const Size b_row_stride = b_strides[0];
             const Size b_col_stride = b_strides[1];
+            const bool parallel = should_parallelize_matmul(m, k, n);
 
-            for (Size i = 0; i < m; ++i)
+#if defined(SYNARA_USE_OPENMP)
+#pragma omp parallel for if (parallel) schedule(static)
+#endif
+            for (long long i = 0; i < static_cast<long long>(m); ++i)
             {
-                const Size a_row_base = i * a_row_stride;
-                Tensor::value_type *out_row = out_data + i * n;
+                const Size row = static_cast<Size>(i);
+                const Size a_row_base = row * a_row_stride;
+                Tensor::value_type *out_row = out_data + row * n;
 
                 for (Size j = 0; j < n; ++j)
                 {

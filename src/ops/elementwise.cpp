@@ -88,6 +88,11 @@ namespace synara
             return a.requires_grad() || b.requires_grad();
         }
 
+        bool should_parallelize_elementwise(Size numel)
+        {
+            return static_cast<long long>(numel) >= (1LL << 15);
+        }
+
         static Tensor unary_scalar_op(const Tensor &a, Tensor::value_type scalar, ScalarOpKind kind)
         {
             require_contiguous(a, "unary scalar op");
@@ -95,12 +100,18 @@ namespace synara
 
             const Tensor::value_type *in = a.data();
             Tensor::value_type *out_data = out.data();
-            Size i = 0;
+            const Size numel = a.numel();
+            const bool parallel = should_parallelize_elementwise(numel);
 
 #if defined(__SSE2__)
+            const Size pair_count = numel / 2;
             const __m128d scalar_vec = _mm_set1_pd(scalar);
-            for (; i + 1 < a.numel(); i += 2)
+#if defined(SYNARA_USE_OPENMP)
+#pragma omp parallel for if (parallel) schedule(static)
+#endif
+            for (long long pair = 0; pair < static_cast<long long>(pair_count); ++pair)
             {
+                const Size i = static_cast<Size>(pair) * 2;
                 const __m128d x = _mm_loadu_pd(in + i);
                 __m128d y;
 
@@ -128,12 +139,20 @@ namespace synara
 
                 _mm_storeu_pd(out_data + i, y);
             }
-#endif
 
-            for (; i < a.numel(); ++i)
+            for (Size i = pair_count * 2; i < numel; ++i)
             {
                 out_data[i] = apply_scalar_scalar(kind, in[i], scalar);
             }
+#else
+#if defined(SYNARA_USE_OPENMP)
+#pragma omp parallel for if (parallel) schedule(static)
+#endif
+            for (long long i = 0; i < static_cast<long long>(numel); ++i)
+            {
+                out_data[static_cast<Size>(i)] = apply_scalar_scalar(kind, in[static_cast<Size>(i)], scalar);
+            }
+#endif
 
             return out;
         }
@@ -148,11 +167,17 @@ namespace synara
             const Tensor::value_type *a_data = a.data();
             const Tensor::value_type *b_data = b.data();
             Tensor::value_type *out_data = out.data();
+            const Size numel = a.numel();
+            const bool parallel = should_parallelize_elementwise(numel);
 
-            Size i = 0;
 #if defined(__SSE2__)
-            for (; i + 1 < a.numel(); i += 2)
+            const Size pair_count = numel / 2;
+#if defined(SYNARA_USE_OPENMP)
+#pragma omp parallel for if (parallel) schedule(static)
+#endif
+            for (long long pair = 0; pair < static_cast<long long>(pair_count); ++pair)
             {
+                const Size i = static_cast<Size>(pair) * 2;
                 const __m128d x = _mm_loadu_pd(a_data + i);
                 const __m128d y = _mm_loadu_pd(b_data + i);
                 __m128d z;
@@ -175,12 +200,21 @@ namespace synara
 
                 _mm_storeu_pd(out_data + i, z);
             }
-#endif
 
-            for (; i < a.numel(); ++i)
+            for (Size i = pair_count * 2; i < numel; ++i)
             {
                 out_data[i] = apply_binary_scalar(kind, a_data[i], b_data[i]);
             }
+#else
+#if defined(SYNARA_USE_OPENMP)
+#pragma omp parallel for if (parallel) schedule(static)
+#endif
+            for (long long i = 0; i < static_cast<long long>(numel); ++i)
+            {
+                out_data[static_cast<Size>(i)] =
+                    apply_binary_scalar(kind, a_data[static_cast<Size>(i)], b_data[static_cast<Size>(i)]);
+            }
+#endif
 
             return out;
         }

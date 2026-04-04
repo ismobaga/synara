@@ -8,6 +8,8 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+option(SYNARA_ENABLE_OPENMP "Enable OpenMP-threaded execution in Synara compute kernels" ON)
+
 add_library(synara_tensor
 	src/tensor/shape.cpp
 	src/tensor/storage.cpp
@@ -50,6 +52,17 @@ target_include_directories(synara_tensor
 	PUBLIC
 		${CMAKE_CURRENT_SOURCE_DIR}/include
 )
+
+if (SYNARA_ENABLE_OPENMP)
+    find_package(OpenMP QUIET)
+    if (OpenMP_CXX_FOUND)
+        target_link_libraries(synara_tensor PUBLIC OpenMP::OpenMP_CXX)
+        target_compile_definitions(synara_tensor PUBLIC SYNARA_USE_OPENMP=1)
+        message(STATUS "Synara: OpenMP support enabled")
+    else()
+        message(STATUS "Synara: OpenMP requested but not found; building without threaded kernels")
+    endif()
+endif()
 
 if (MSVC)
     target_compile_options(synara_tensor PRIVATE /W4)

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <fstream>
 #include <iomanip>
 #include <sstream>
 #include <string>
@@ -72,6 +73,30 @@ namespace synara
             << ",\"avg_batch_ms\":" << stats.average_batch_ms()
             << "}";
         return oss.str();
+    }
+
+    inline bool write_epoch_stats_csv(const EpochStats &stats, const std::string &path, bool include_header = true)
+    {
+        std::ofstream out(path);
+        if (!out)
+        {
+            return false;
+        }
+
+        out << format_epoch_stats_csv(stats, include_header);
+        return static_cast<bool>(out);
+    }
+
+    inline bool write_epoch_stats_json(const EpochStats &stats, const std::string &path)
+    {
+        std::ofstream out(path);
+        if (!out)
+        {
+            return false;
+        }
+
+        out << format_epoch_stats_json(stats);
+        return static_cast<bool>(out);
     }
 
     namespace detail

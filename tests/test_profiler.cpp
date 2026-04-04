@@ -1,5 +1,8 @@
 #include <cassert>
 #include <chrono>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <thread>
 
 #include "synara/core/profiler.hpp"
@@ -33,6 +36,24 @@ int main()
     const std::string json = format_profile_json();
     assert(json.find("\"name\":\"sleep_scope\"") != std::string::npos);
     assert(json.find("\"calls\":1") != std::string::npos);
+
+    const std::filesystem::path csv_path = "synara_profile_test.csv";
+    const std::filesystem::path json_path = "synara_profile_test.json";
+    assert(write_profile_csv(csv_path.string()));
+    assert(write_profile_json(json_path.string()));
+
+    std::ifstream csv_in(csv_path);
+    std::stringstream csv_buffer;
+    csv_buffer << csv_in.rdbuf();
+    assert(csv_buffer.str().find("sleep_scope") != std::string::npos);
+
+    std::ifstream json_in(json_path);
+    std::stringstream json_buffer;
+    json_buffer << json_in.rdbuf();
+    assert(json_buffer.str().find("\"sleep_scope\"") != std::string::npos);
+
+    std::filesystem::remove(csv_path);
+    std::filesystem::remove(json_path);
 
     enable_profiling(false);
     {

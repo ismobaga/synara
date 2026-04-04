@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <fstream>
 #include <iomanip>
 #include <limits>
 #include <mutex>
@@ -83,6 +84,18 @@ namespace synara
             }
             escaped.push_back('"');
             return escaped;
+        }
+
+        bool write_text_file(const std::string &path, const std::string &contents)
+        {
+            std::ofstream out(path);
+            if (!out)
+            {
+                return false;
+            }
+
+            out << contents;
+            return static_cast<bool>(out);
         }
 
     } // namespace
@@ -229,6 +242,21 @@ namespace synara
 
         oss << "]";
         return oss.str();
+    }
+
+    bool write_profile_summary(const std::string &path)
+    {
+        return write_text_file(path, format_profile_summary());
+    }
+
+    bool write_profile_csv(const std::string &path)
+    {
+        return write_text_file(path, format_profile_csv());
+    }
+
+    bool write_profile_json(const std::string &path)
+    {
+        return write_text_file(path, format_profile_json());
     }
 
     ScopedProfile::ScopedProfile(std::string name, bool active) noexcept

@@ -33,6 +33,9 @@ namespace synara
     std::string format_profile_summary();
     std::string format_profile_csv();
     std::string format_profile_json();
+    bool write_profile_summary(const std::string &path);
+    bool write_profile_csv(const std::string &path);
+    bool write_profile_json(const std::string &path);
 
     class ScopedProfile
     {

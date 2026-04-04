@@ -91,6 +91,13 @@ auto stats = train_epoch_profiled(model, loader, optimizer, loss_fn);
 std::cout << "loss=" << stats.mean_loss
           << ", avg_batch_ms=" << stats.average_batch_ms() << "\n";
 std::cout << format_profile_summary() << "\n";
+std::cout << format_profile_csv() << "\n";
+std::cout << format_epoch_stats_json(stats) << "\n";
+
+write_profile_csv("profile.csv");
+write_profile_json("profile.json");
+write_epoch_stats_csv(stats, "epoch.csv");
+write_epoch_stats_json(stats, "epoch.json");
 ```
 
 ## Run Tests
@@ -113,7 +120,7 @@ finite-difference gradient-validation tests (56+ test files).
 ./build/synara_pooling_basics          # max pooling
 ./build/synara_avg_pooling_basics      # average pooling
 ./build/synara_conv2d_advanced         # groups & dilation
-./build/synara_parallel_bench          # threaded kernel benchmark & tuning demo
+./build/synara_parallel_bench [prefix] # benchmark demo; optional `prefix` writes `<prefix>.csv/json`
 ./build/synara_mnist_cnn <mnist_dir> [epochs] [batch_size] [train_limit] [test_limit]
 ```
 

@@ -1,9 +1,10 @@
 #include <chrono>
 #include <iostream>
+#include <string>
 
 #include "synara.hpp"
 
-int main()
+int main(int argc, char **argv)
 {
     using namespace synara;
 
@@ -65,6 +66,18 @@ int main()
     std::cout << "sample=" << c.at({0, 0}) + p.at({0, 0, 0, 0}) << "\n\n";
 
     std::cout << format_profile_summary();
+
+    if (argc > 1)
+    {
+        const std::string prefix = argv[1];
+        const std::string csv_path = prefix + ".csv";
+        const std::string json_path = prefix + ".json";
+
+        const bool csv_ok = write_profile_csv(csv_path);
+        const bool json_ok = write_profile_json(json_path);
+        std::cout << "\nSaved profile CSV: " << (csv_ok ? csv_path : "<failed>") << "\n";
+        std::cout << "Saved profile JSON: " << (json_ok ? json_path : "<failed>") << "\n";
+    }
 
     return 0;
 }

@@ -1,4 +1,7 @@
 #include <cassert>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 
 #include "synara/data/dataloader.hpp"
 #include "synara/data/dataset.hpp"
@@ -72,6 +75,24 @@ int main()
     const std::string train_json = format_epoch_stats_json(train_stats);
     assert(train_json.find("\"batches\":2") != std::string::npos);
     assert(train_json.find("\"forward_ms\":") != std::string::npos);
+
+    const std::filesystem::path epoch_csv_path = "synara_epoch_stats_test.csv";
+    const std::filesystem::path epoch_json_path = "synara_epoch_stats_test.json";
+    assert(write_epoch_stats_csv(train_stats, epoch_csv_path.string()));
+    assert(write_epoch_stats_json(train_stats, epoch_json_path.string()));
+
+    std::ifstream epoch_csv_in(epoch_csv_path);
+    std::stringstream epoch_csv_buffer;
+    epoch_csv_buffer << epoch_csv_in.rdbuf();
+    assert(epoch_csv_buffer.str().find("mean_loss,batches,total_ms") != std::string::npos);
+
+    std::ifstream epoch_json_in(epoch_json_path);
+    std::stringstream epoch_json_buffer;
+    epoch_json_buffer << epoch_json_in.rdbuf();
+    assert(epoch_json_buffer.str().find("\"batches\":2") != std::string::npos);
+
+    std::filesystem::remove(epoch_csv_path);
+    std::filesystem::remove(epoch_json_path);
 
     assert(train_loss >= 0.0f);
     assert(eval_loss >= 0.0f);

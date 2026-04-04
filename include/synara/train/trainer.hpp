@@ -101,6 +101,66 @@ namespace synara
 
     namespace detail
     {
+        inline std::string escape_json_string(const std::string &value)
+        {
+            std::string escaped;
+            escaped.reserve(value.size());
+            for (const char c : value)
+            {
+                switch (c)
+                {
+                case '\\':
+                    escaped += "\\\\";
+                    break;
+                case '"':
+                    escaped += "\\\"";
+                    break;
+                case '\n':
+                    escaped += "\\n";
+                    break;
+                case '\r':
+                    escaped += "\\r";
+                    break;
+                case '\t':
+                    escaped += "\\t";
+                    break;
+                default:
+                    escaped.push_back(c);
+                    break;
+                }
+            }
+            return escaped;
+        }
+
+        inline std::string escape_csv_value(const std::string &value)
+        {
+            if (value.find_first_of(",\"\n\r") == std::string::npos)
+            {
+                return value;
+            }
+
+            std::string escaped = "\"";
+            for (const char c : value)
+            {
+                if (c == '"')
+                {
+                    escaped += "\"\"";
+                }
+                else
+                {
+                    escaped.push_back(c);
+                }
+            }
+            escaped.push_back('"');
+            return escaped;
+        }
+
+        inline bool file_missing_or_empty(const std::string &path)
+        {
+            std::ifstream in(path, std::ios::binary | std::ios::ate);
+            return !in || in.tellg() == 0;
+        }
+
         template <typename Fn>
         double measure_ms(Fn &&fn)
         {
@@ -110,6 +170,89 @@ namespace synara
             return std::chrono::duration<double, std::milli>(end - start).count();
         }
     } // namespace detail
+
+    inline std::string format_epoch_history_csv_header()
+    {
+        return "epoch,stage,mean_loss,batches,total_ms,data_ms,forward_ms,loss_ms,zero_grad_ms,backward_ms,step_ms,avg_batch_ms\n";
+    }
+
+    inline std::string format_epoch_history_csv_row(Size epoch, const std::string &stage, const EpochStats &stats)
+    {
+        std::ostringstream oss;
+        oss << std::fixed << std::setprecision(3)
+            << epoch << ","
+            << detail::escape_csv_value(stage) << ","
+            << static_cast<double>(stats.mean_loss) << ","
+            << stats.batches << ","
+            << stats.total_ms << ","
+            << stats.data_ms << ","
+            << stats.forward_ms << ","
+            << stats.loss_ms << ","
+            << stats.zero_grad_ms << ","
+            << stats.backward_ms << ","
+            << stats.step_ms << ","
+            << stats.average_batch_ms() << "\n";
+        return oss.str();
+    }
+
+    inline std::string format_epoch_history_json(Size epoch, const std::string &stage, const EpochStats &stats)
+    {
+        std::ostringstream oss;
+        oss << std::fixed << std::setprecision(3)
+            << "{"
+            << "\"epoch\":" << epoch
+            << ",\"stage\":\"" << detail::escape_json_string(stage) << "\""
+            << ",\"mean_loss\":" << static_cast<double>(stats.mean_loss)
+            << ",\"batches\":" << stats.batches
+            << ",\"total_ms\":" << stats.total_ms
+            << ",\"data_ms\":" << stats.data_ms
+            << ",\"forward_ms\":" << stats.forward_ms
+            << ",\"loss_ms\":" << stats.loss_ms
+            << ",\"zero_grad_ms\":" << stats.zero_grad_ms
+            << ",\"backward_ms\":" << stats.backward_ms
+            << ",\"step_ms\":" << stats.step_ms
+            << ",\"avg_batch_ms\":" << stats.average_batch_ms()
+            << "}";
+        return oss.str();
+    }
+
+    inline bool append_epoch_history_csv(
+        Size epoch,
+        const std::string &stage,
+        const EpochStats &stats,
+        const std::string &path,
+        bool write_header_if_empty = true)
+    {
+        const bool write_header = write_header_if_empty && detail::file_missing_or_empty(path);
+        std::ofstream out(path, std::ios::app);
+        if (!out)
+        {
+            return false;
+        }
+
+        if (write_header)
+        {
+            out << format_epoch_history_csv_header();
+        }
+        out << format_epoch_history_csv_row(epoch, stage, stats);
+        return static_cast<bool>(out);
+    }
+
+    inline bool append_epoch_history_jsonl(
+        Size epoch,
+        const std::string &stage,
+        const EpochStats &stats,
+        const std::string &path)
+    {
+        std::ofstream out(path, std::ios::app);
+        if (!out)
+        {
+            return false;
+        }
+
+        out << format_epoch_history_json(epoch, stage, stats) << "\n";
+        return static_cast<bool>(out);
+    }
 
     template <typename LossFn>
     EpochStats train_epoch_profiled(

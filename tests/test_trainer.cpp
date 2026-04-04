@@ -91,8 +91,33 @@ int main()
     epoch_json_buffer << epoch_json_in.rdbuf();
     assert(epoch_json_buffer.str().find("\"batches\":2") != std::string::npos);
 
+    const std::filesystem::path history_csv_path = "synara_epoch_history_test.csv";
+    const std::filesystem::path history_jsonl_path = "synara_epoch_history_test.jsonl";
+    assert(append_epoch_history_csv(1, "train", train_stats, history_csv_path.string()));
+    assert(append_epoch_history_csv(1, "eval", eval_stats, history_csv_path.string()));
+    assert(append_epoch_history_jsonl(1, "train", train_stats, history_jsonl_path.string()));
+    assert(append_epoch_history_jsonl(1, "eval", eval_stats, history_jsonl_path.string()));
+
+    std::ifstream history_csv_in(history_csv_path);
+    std::stringstream history_csv_buffer;
+    history_csv_buffer << history_csv_in.rdbuf();
+    const std::string history_csv = history_csv_buffer.str();
+    assert(history_csv.find("epoch,stage,mean_loss,batches,total_ms") != std::string::npos);
+    assert(history_csv.find("1,train,") != std::string::npos);
+    assert(history_csv.find("1,eval,") != std::string::npos);
+
+    std::ifstream history_jsonl_in(history_jsonl_path);
+    std::stringstream history_jsonl_buffer;
+    history_jsonl_buffer << history_jsonl_in.rdbuf();
+    const std::string history_jsonl = history_jsonl_buffer.str();
+    assert(history_jsonl.find("\"epoch\":1") != std::string::npos);
+    assert(history_jsonl.find("\"stage\":\"train\"") != std::string::npos);
+    assert(history_jsonl.find("\"stage\":\"eval\"") != std::string::npos);
+
     std::filesystem::remove(epoch_csv_path);
     std::filesystem::remove(epoch_json_path);
+    std::filesystem::remove(history_csv_path);
+    std::filesystem::remove(history_jsonl_path);
 
     assert(train_loss >= 0.0f);
     assert(eval_loss >= 0.0f);

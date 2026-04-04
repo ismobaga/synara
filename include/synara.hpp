@@ -77,6 +77,11 @@
 #include "synara/metrics/metrics.hpp"
 #endif
 
+// Visualization
+#if __has_include("synara/visualization/plot.hpp")
+#include "synara/visualization/plot.hpp"
+#endif
+
 // Training
 #if __has_include("synara/train/trainer.hpp")
 #include "synara/train/trainer.hpp"

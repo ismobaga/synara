@@ -1,5 +1,7 @@
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
@@ -16,6 +18,8 @@
 #include "synara/optim/adam.hpp"
 #include "synara/serialize/state_dict.hpp"
 #include "synara/tensor/slice.hpp"
+#include "synara/train/trainer.hpp"
+#include "synara/visualization/plot.hpp"
 
 namespace
 {
@@ -165,7 +169,7 @@ int main(int argc, char **argv)
 
     if (argc < 2)
     {
-        std::cout << "Usage: " << argv[0] << " <mnist_dir> [epochs] [batch_size] [train_limit] [test_limit]\n";
+        std::cout << "Usage: " << argv[0] << " <mnist_dir> [epochs] [batch_size] [train_limit] [test_limit] [log_prefix]\n";
         std::cout << "Expected files in <mnist_dir>:\n";
         std::cout << "  train-images-idx3-ubyte\n";
         std::cout << "  train-labels-idx1-ubyte\n";
@@ -179,6 +183,7 @@ int main(int argc, char **argv)
     const std::size_t batch_size = (argc > 3) ? std::max(1, std::stoi(argv[3])) : 64;
     const std::size_t train_limit = (argc > 4) ? static_cast<std::size_t>(std::stoll(argv[4])) : 6000;
     const std::size_t test_limit = (argc > 5) ? static_cast<std::size_t>(std::stoll(argv[5])) : 1000;
+    const std::string log_prefix = (argc > 6) ? argv[6] : "";
 
     const std::string train_images_path = data_dir + "/train-images.idx3-ubyte";
     const std::string train_labels_path = data_dir + "/train-labels.idx1-ubyte";
@@ -215,12 +220,28 @@ int main(int argc, char **argv)
         Adam optimizer(param_tensors, AdamOptions{.lr = 0.001, .beta1 = 0.9, .beta2 = 0.999, .eps = 1e-8, .weight_decay = 0.0});
 
         std::cout << "train samples: " << train_x.shape()[0] << ", test samples: " << test_x.shape()[0] << "\n";
-        std::cout << "epochs=" << epochs << ", batch_size=" << batch_size << "\n\n";
+        std::cout << "epochs=" << epochs << ", batch_size=" << batch_size << "\n";
+        if (!log_prefix.empty())
+        {
+            std::filesystem::remove(log_prefix + ".csv");
+            std::filesystem::remove(log_prefix + ".jsonl");
+            std::filesystem::remove(log_prefix + "_loss.svg");
+            std::filesystem::remove(log_prefix + "_accuracy.svg");
+            std::cout << "history logs: " << log_prefix << ".csv, " << log_prefix << ".jsonl\n";
+        }
+        std::cout << "\n";
+
+        std::vector<double> train_loss_history;
+        std::vector<double> test_loss_history;
+        std::vector<double> train_acc_history;
+        std::vector<double> test_acc_history;
 
         for (int epoch = 0; epoch < epochs; ++epoch)
         {
+            const auto train_start = std::chrono::steady_clock::now();
             float epoch_loss_sum = 0.0f;
             std::size_t seen = 0;
+            std::size_t train_batches = 0;
 
             for (std::size_t start = 0; start < train_x.shape()[0]; start += batch_size)
             {
@@ -239,23 +260,97 @@ int main(int argc, char **argv)
                 const std::size_t batch_n = end - start;
                 epoch_loss_sum += loss.item() * static_cast<float>(batch_n);
                 seen += batch_n;
+                ++train_batches;
             }
 
+            const double train_ms = std::chrono::duration<double, std::milli>(
+                                        std::chrono::steady_clock::now() - train_start)
+                                        .count();
+
+            const auto eval_start = std::chrono::steady_clock::now();
             Tensor train_pred = model(train_x);
             Tensor test_pred = model(test_x);
+            const double eval_ms = std::chrono::duration<double, std::milli>(
+                                       std::chrono::steady_clock::now() - eval_start)
+                                       .count();
+
             const float train_loss = mse_loss(train_pred, train_y).item();
             const float test_loss = mse_loss(test_pred, test_y).item();
             const float train_acc = accuracy(train_pred, train_labels);
             const float test_acc = accuracy(test_pred, test_labels);
 
+            train_loss_history.push_back(train_loss);
+            test_loss_history.push_back(test_loss);
+            train_acc_history.push_back(train_acc);
+            test_acc_history.push_back(test_acc);
+
             std::cout << "epoch " << (epoch + 1)
                       << " train_loss=" << train_loss
                       << " test_loss=" << test_loss
                       << " train_acc=" << train_acc
-                      << " test_acc=" << test_acc << "\n";
+                      << " test_acc=" << test_acc
+                      << " train_ms=" << train_ms
+                      << " eval_ms=" << eval_ms << "\n";
+
+            if (!log_prefix.empty())
+            {
+                EpochStats train_stats;
+                train_stats.mean_loss = train_loss;
+                train_stats.batches = train_batches;
+                train_stats.total_ms = train_ms;
+
+                EpochStats eval_stats;
+                eval_stats.mean_loss = test_loss;
+                eval_stats.batches = 1;
+                eval_stats.total_ms = eval_ms;
+                eval_stats.forward_ms = eval_ms;
+
+                append_epoch_history_csv(static_cast<Size>(epoch + 1), "train", train_stats, log_prefix + ".csv");
+                append_epoch_history_csv(static_cast<Size>(epoch + 1), "eval", eval_stats, log_prefix + ".csv");
+                append_epoch_history_jsonl(static_cast<Size>(epoch + 1), "train", train_stats, log_prefix + ".jsonl");
+                append_epoch_history_jsonl(static_cast<Size>(epoch + 1), "eval", eval_stats, log_prefix + ".jsonl");
+            }
 
             (void)epoch_loss_sum;
             (void)seen;
+        }
+
+        PlotOptions loss_plot_options;
+        loss_plot_options.title = "MNIST Loss";
+        loss_plot_options.width = 48;
+        loss_plot_options.height = 10;
+
+        PlotOptions accuracy_plot_options;
+        accuracy_plot_options.title = "MNIST Accuracy";
+        accuracy_plot_options.width = 48;
+        accuracy_plot_options.height = 10;
+        accuracy_plot_options.y_min = 0.0;
+        accuracy_plot_options.y_max = 1.0;
+
+        const std::vector<PlotSeries> loss_series = {
+            PlotSeries{"train_loss", train_loss_history, '*'},
+            PlotSeries{"test_loss", test_loss_history, 'o'},
+        };
+        const std::vector<PlotSeries> accuracy_series = {
+            PlotSeries{"train_acc", train_acc_history, '+'},
+            PlotSeries{"test_acc", test_acc_history, 'x'},
+        };
+
+        std::cout << "\n"
+                  << render_line_plot(loss_series, loss_plot_options) << "\n\n";
+        std::cout << render_line_plot(accuracy_series, accuracy_plot_options) << "\n";
+
+        if (!log_prefix.empty())
+        {
+            const std::string loss_svg_path = log_prefix + "_loss.svg";
+            const std::string accuracy_svg_path = log_prefix + "_accuracy.svg";
+            const bool loss_svg_ok = write_line_plot_svg(loss_series, loss_svg_path, loss_plot_options);
+            const bool accuracy_svg_ok = write_line_plot_svg(accuracy_series, accuracy_svg_path, accuracy_plot_options);
+            std::cout << "saved plots: "
+                      << (loss_svg_ok ? loss_svg_path : "<loss plot failed>")
+                      << ", "
+                      << (accuracy_svg_ok ? accuracy_svg_path : "<accuracy plot failed>")
+                      << "\n";
         }
 
         const std::string checkpoint = "mnist_cnn_checkpoint.syn";

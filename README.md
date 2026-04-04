@@ -37,6 +37,12 @@ autograd fundamentals, and end-to-end neural network building blocks.
 - `Adam` — with configurable β₁/β₂, ε, and weight decay
 - `RMSprop` — with momentum, α (smoothing constant), ε, and weight decay
 
+### Visualization
+
+- Terminal ASCII line plots via `render_line_plot(...)`
+- Self-contained SVG export via `write_line_plot_svg(...)`
+- Works well with training-history logs and MNIST example runs
+
 ### Serialization
 
 - Module `state_dict()` and `load_state_dict()`
@@ -98,6 +104,15 @@ write_profile_csv("profile.csv");
 write_profile_json("profile.json");
 write_epoch_stats_csv(stats, "epoch.csv");
 write_epoch_stats_json(stats, "epoch.json");
+append_epoch_history_csv(1, "train", stats, "history.csv");
+append_epoch_history_jsonl(1, "train", stats, "history.jsonl");
+
+std::vector<PlotSeries> series = {
+    {"train_loss", {0.9, 0.7, 0.5, 0.3}, '*'},
+    {"eval_loss", {1.0, 0.8, 0.6, 0.4}, 'o'},
+};
+std::cout << render_line_plot(series, PlotOptions{.title = "Loss curves"}) << "\n";
+write_line_plot_svg(series, "loss_curves.svg", PlotOptions{.title = "Loss curves"});
 ```
 
 ## Run Tests
@@ -121,7 +136,7 @@ finite-difference gradient-validation tests (56+ test files).
 ./build/synara_avg_pooling_basics      # average pooling
 ./build/synara_conv2d_advanced         # groups & dilation
 ./build/synara_parallel_bench [prefix] # benchmark demo; optional `prefix` writes `<prefix>.csv/json`
-./build/synara_mnist_cnn <mnist_dir> [epochs] [batch_size] [train_limit] [test_limit]
+./build/synara_mnist_cnn <mnist_dir> [epochs] [batch_size] [train_limit] [test_limit] [log_prefix]
 ```
 
 For the MNIST example, place these IDX files in `<mnist_dir>`:

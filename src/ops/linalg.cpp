@@ -1,11 +1,81 @@
 #include "synara/ops/linalg.hpp"
 #include "synara/autograd/nodes.hpp"
 #include "synara/core/error.hpp"
+
+#include <algorithm>
 #include <stdexcept>
 #include <string>
 
 namespace synara
 {
+    namespace
+    {
+        Tensor matmul_contiguous(const Tensor &a, const Tensor &b, Size m, Size k, Size n)
+        {
+            Tensor out = Tensor::zeros(Shape({m, n}));
+
+            const Tensor::value_type *a_data = a.data();
+            const Tensor::value_type *b_data = b.data();
+            Tensor::value_type *out_data = out.data();
+
+            for (Size i = 0; i < m; ++i)
+            {
+                const Tensor::value_type *a_row = a_data + i * k;
+                Tensor::value_type *out_row = out_data + i * n;
+
+                for (Size kk = 0; kk < k; ++kk)
+                {
+                    const Tensor::value_type a_ik = a_row[kk];
+                    const Tensor::value_type *b_row = b_data + kk * n;
+
+                    for (Size j = 0; j < n; ++j)
+                    {
+                        out_row[j] += a_ik * b_row[j];
+                    }
+                }
+            }
+
+            return out;
+        }
+
+        Tensor matmul_strided(const Tensor &a, const Tensor &b, Size m, Size k, Size n)
+        {
+            Tensor out = Tensor::zeros(Shape({m, n}));
+
+            const Tensor::value_type *a_data = a.data();
+            const Tensor::value_type *b_data = b.data();
+            Tensor::value_type *out_data = out.data();
+
+            const auto a_strides = a.strides().values();
+            const auto b_strides = b.strides().values();
+            const Size a_row_stride = a_strides[0];
+            const Size a_col_stride = a_strides[1];
+            const Size b_row_stride = b_strides[0];
+            const Size b_col_stride = b_strides[1];
+
+            for (Size i = 0; i < m; ++i)
+            {
+                const Size a_row_base = i * a_row_stride;
+                Tensor::value_type *out_row = out_data + i * n;
+
+                for (Size j = 0; j < n; ++j)
+                {
+                    Tensor::value_type acc = 0.0;
+                    const Size b_col_base = j * b_col_stride;
+
+                    for (Size kk = 0; kk < k; ++kk)
+                    {
+                        acc += a_data[a_row_base + kk * a_col_stride] *
+                               b_data[kk * b_row_stride + b_col_base];
+                    }
+
+                    out_row[j] = acc;
+                }
+            }
+
+            return out;
+        }
+    } // namespace
 
     Tensor matmul(const Tensor &a, const Tensor &b)
     {
@@ -24,20 +94,9 @@ namespace synara
             throw ShapeError("matmul(): inner dimensions must match.");
         }
 
-        Tensor out = Tensor::zeros(Shape({m, n}));
-
-        for (Size i = 0; i < m; ++i)
-        {
-            for (Size j = 0; j < n; ++j)
-            {
-                Tensor::value_type acc = 0;
-                for (Size k = 0; k < k1; ++k)
-                {
-                    acc += a.at({i, k}) * b.at({k, j});
-                }
-                out.at({i, j}) = acc;
-            }
-        }
+        Tensor out = (a.is_contiguous() && b.is_contiguous())
+                         ? matmul_contiguous(a, b, m, k1, n)
+                         : matmul_strided(a, b, m, k1, n);
 
         bool req = a.requires_grad() || b.requires_grad();
         out.set_leaf(!req);
@@ -73,8 +132,8 @@ namespace synara
                 throw std::out_of_range("embedding(): index " + std::to_string(idx) +
                                         " out of range for vocab size " +
                                         std::to_string(vocab_size));
-            for (Size d = 0; d < embed_dim; ++d)
-                o[i * embed_dim + d] = w[idx * embed_dim + d];
+
+            std::copy_n(w + idx * embed_dim, embed_dim, o + i * embed_dim);
         }
 
         bool req = weight.requires_grad() && grad_mode_enabled();

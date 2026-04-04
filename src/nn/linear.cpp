@@ -27,20 +27,49 @@ namespace synara
                 const Size batch = grad_output.shape()[0];
                 const Size out_features = grad_output.shape()[1];
                 const Size in_features = input_.shape()[1];
+                const bool fast_path =
+                    grad_output.is_contiguous() && input_.is_contiguous() && weight_.is_contiguous() &&
+                    (!use_bias_ || bias_.is_contiguous());
 
                 if (input_.requires_grad())
                 {
                     Tensor grad_input = Tensor::zeros(input_.shape(), false);
-                    for (Size n = 0; n < batch; ++n)
+
+                    if (fast_path)
                     {
-                        for (Size i = 0; i < in_features; ++i)
+                        const Tensor::value_type *go = grad_output.data();
+                        const Tensor::value_type *w = weight_.data();
+                        Tensor::value_type *gi = grad_input.data();
+
+                        for (Size n = 0; n < batch; ++n)
                         {
-                            Tensor::value_type acc = 0.0f;
+                            const Tensor::value_type *go_row = go + n * out_features;
+                            Tensor::value_type *gi_row = gi + n * in_features;
+
                             for (Size o = 0; o < out_features; ++o)
                             {
-                                acc += grad_output.at({n, o}) * weight_.at({o, i});
+                                const Tensor::value_type g = go_row[o];
+                                const Tensor::value_type *w_row = w + o * in_features;
+                                for (Size i = 0; i < in_features; ++i)
+                                {
+                                    gi_row[i] += g * w_row[i];
+                                }
                             }
-                            grad_input.at({n, i}) = acc;
+                        }
+                    }
+                    else
+                    {
+                        for (Size n = 0; n < batch; ++n)
+                        {
+                            for (Size i = 0; i < in_features; ++i)
+                            {
+                                Tensor::value_type acc = 0.0f;
+                                for (Size o = 0; o < out_features; ++o)
+                                {
+                                    acc += grad_output.at({n, o}) * weight_.at({o, i});
+                                }
+                                grad_input.at({n, i}) = acc;
+                            }
                         }
                     }
 
@@ -54,16 +83,40 @@ namespace synara
                 if (weight_.requires_grad())
                 {
                     Tensor grad_weight = Tensor::zeros(weight_.shape(), false);
-                    for (Size o = 0; o < out_features; ++o)
+
+                    if (fast_path)
                     {
-                        for (Size i = 0; i < in_features; ++i)
+                        const Tensor::value_type *go = grad_output.data();
+                        const Tensor::value_type *x = input_.data();
+                        Tensor::value_type *gw = grad_weight.data();
+
+                        for (Size o = 0; o < out_features; ++o)
                         {
-                            Tensor::value_type acc = 0.0f;
+                            Tensor::value_type *gw_row = gw + o * in_features;
                             for (Size n = 0; n < batch; ++n)
                             {
-                                acc += grad_output.at({n, o}) * input_.at({n, i});
+                                const Tensor::value_type g = go[n * out_features + o];
+                                const Tensor::value_type *x_row = x + n * in_features;
+                                for (Size i = 0; i < in_features; ++i)
+                                {
+                                    gw_row[i] += g * x_row[i];
+                                }
                             }
-                            grad_weight.at({o, i}) = acc;
+                        }
+                    }
+                    else
+                    {
+                        for (Size o = 0; o < out_features; ++o)
+                        {
+                            for (Size i = 0; i < in_features; ++i)
+                            {
+                                Tensor::value_type acc = 0.0f;
+                                for (Size n = 0; n < batch; ++n)
+                                {
+                                    acc += grad_output.at({n, o}) * input_.at({n, i});
+                                }
+                                grad_weight.at({o, i}) = acc;
+                            }
                         }
                     }
 
@@ -77,11 +130,29 @@ namespace synara
                 if (use_bias_ && bias_.requires_grad())
                 {
                     Tensor grad_bias = Tensor::zeros(bias_.shape(), false);
-                    for (Size n = 0; n < batch; ++n)
+
+                    if (fast_path)
                     {
-                        for (Size o = 0; o < out_features; ++o)
+                        const Tensor::value_type *go = grad_output.data();
+                        Tensor::value_type *gb = grad_bias.data();
+
+                        for (Size n = 0; n < batch; ++n)
                         {
-                            grad_bias.at({0, o}) += grad_output.at({n, o});
+                            const Tensor::value_type *go_row = go + n * out_features;
+                            for (Size o = 0; o < out_features; ++o)
+                            {
+                                gb[o] += go_row[o];
+                            }
+                        }
+                    }
+                    else
+                    {
+                        for (Size n = 0; n < batch; ++n)
+                        {
+                            for (Size o = 0; o < out_features; ++o)
+                            {
+                                grad_bias.at({0, o}) += grad_output.at({n, o});
+                            }
                         }
                     }
 
@@ -120,34 +191,72 @@ namespace synara
             throw ShapeError("Linear::forward(): input feature dimension mismatch.");
         }
 
-        Tensor output = Tensor::zeros(
-            Shape({input.shape()[0], out_features_}),
-            input.requires_grad() || weight_.requires_grad() || (use_bias_ && bias_.requires_grad()));
+        const Tensor &weight_tensor = weight_.tensor();
+        const Tensor &bias_tensor = bias_.tensor();
+        const bool requires_grad =
+            input.requires_grad() || weight_.requires_grad() || (use_bias_ && bias_.requires_grad());
 
-        for (Size n = 0; n < input.shape()[0]; ++n)
+        Tensor output = Tensor::zeros(Shape({input.shape()[0], out_features_}), requires_grad);
+
+        if (input.is_contiguous() && weight_tensor.is_contiguous() && (!use_bias_ || bias_tensor.is_contiguous()))
         {
-            for (Size o = 0; o < out_features_; ++o)
+            const Tensor::value_type *x = input.data();
+            const Tensor::value_type *w = weight_tensor.data();
+            const Tensor::value_type *b = use_bias_ ? bias_tensor.data() : nullptr;
+            Tensor::value_type *y = output.data();
+
+            for (Size n = 0; n < input.shape()[0]; ++n)
             {
-                Tensor::value_type acc = 0.0f;
-                for (Size i = 0; i < in_features_; ++i)
+                const Tensor::value_type *x_row = x + n * in_features_;
+                Tensor::value_type *y_row = y + n * out_features_;
+
+                for (Size o = 0; o < out_features_; ++o)
                 {
-                    acc += input.at({n, i}) * weight_.tensor().at({o, i});
+                    const Tensor::value_type *w_row = w + o * in_features_;
+                    Tensor::value_type acc = use_bias_ ? b[o] : 0.0f;
+
+                    Size i = 0;
+                    for (; i + 3 < in_features_; i += 4)
+                    {
+                        acc += x_row[i] * w_row[i];
+                        acc += x_row[i + 1] * w_row[i + 1];
+                        acc += x_row[i + 2] * w_row[i + 2];
+                        acc += x_row[i + 3] * w_row[i + 3];
+                    }
+                    for (; i < in_features_; ++i)
+                    {
+                        acc += x_row[i] * w_row[i];
+                    }
+
+                    y_row[o] = acc;
                 }
-                if (use_bias_)
+            }
+        }
+        else
+        {
+            for (Size n = 0; n < input.shape()[0]; ++n)
+            {
+                for (Size o = 0; o < out_features_; ++o)
                 {
-                    acc += bias_.tensor().at({0, o});
+                    Tensor::value_type acc = 0.0f;
+                    for (Size i = 0; i < in_features_; ++i)
+                    {
+                        acc += input.at({n, i}) * weight_tensor.at({o, i});
+                    }
+                    if (use_bias_)
+                    {
+                        acc += bias_tensor.at({0, o});
+                    }
+                    output.at({n, o}) = acc;
                 }
-                output.at({n, o}) = acc;
             }
         }
 
-        const bool requires_grad =
-            input.requires_grad() || weight_.requires_grad() || (use_bias_ && bias_.requires_grad());
         output.set_requires_grad(requires_grad);
         output.set_leaf(!requires_grad);
         if (requires_grad)
         {
-            output.set_grad_fn(std::make_shared<LinearNode>(input, weight_.tensor(), bias_.tensor(), use_bias_));
+            output.set_grad_fn(std::make_shared<LinearNode>(input, weight_tensor, bias_tensor, use_bias_));
         }
 
         return output;

@@ -1,5 +1,7 @@
 #include "synara/core/parallel.hpp"
 
+#include <algorithm>
+
 #if defined(SYNARA_USE_OPENMP)
 #include <omp.h>
 #endif
@@ -62,6 +64,44 @@ namespace synara
     void reset_parallel_config() noexcept
     {
         global_parallel_config() = ParallelConfig{};
+    }
+
+    ParallelConfig autotune_parallel_config(Size workload_size, int preferred_threads) noexcept
+    {
+        ParallelConfig config{};
+
+        int threads = preferred_threads > 0 ? preferred_threads : get_num_threads();
+        if (threads < 1)
+        {
+            threads = 1;
+        }
+
+        if (workload_size <= static_cast<Size>(1) << 12)
+        {
+            config.elementwise_threshold = static_cast<Size>(1) << 20;
+            config.matmul_threshold = static_cast<Size>(1) << 18;
+            config.linear_threshold = static_cast<Size>(1) << 18;
+            config.conv2d_threshold = static_cast<Size>(1) << 18;
+            config.pooling_threshold = static_cast<Size>(1) << 18;
+            return config;
+        }
+
+        const Size thread_scale = static_cast<Size>(threads);
+        config.elementwise_threshold = std::max<Size>((static_cast<Size>(1) << 14) * thread_scale, workload_size / 4);
+        config.matmul_threshold = std::max<Size>((static_cast<Size>(1) << 13) * thread_scale, workload_size / 8);
+        config.linear_threshold = std::max<Size>((static_cast<Size>(1) << 13) * thread_scale, workload_size / 8);
+        config.conv2d_threshold = std::max<Size>((static_cast<Size>(1) << 12) * thread_scale, workload_size / 16);
+        config.pooling_threshold = std::max<Size>((static_cast<Size>(1) << 12) * thread_scale, workload_size / 16);
+        return config;
+    }
+
+    void apply_autotuned_parallel_config(Size workload_size, int preferred_threads) noexcept
+    {
+        if (preferred_threads > 0)
+        {
+            set_num_threads(preferred_threads);
+        }
+        set_parallel_config(autotune_parallel_config(workload_size, preferred_threads));
     }
 
 } // namespace synara

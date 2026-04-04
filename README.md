@@ -66,6 +66,8 @@ ParallelConfig tuned = parallel_config();
 tuned.conv2d_threshold = 1 << 15;
 tuned.linear_threshold = 1 << 15;
 set_parallel_config(tuned);
+
+apply_autotuned_parallel_config(1 << 18, 4);
 ```
 
 ## Run Tests
@@ -88,6 +90,7 @@ finite-difference gradient-validation tests (56+ test files).
 ./build/synara_pooling_basics          # max pooling
 ./build/synara_avg_pooling_basics      # average pooling
 ./build/synara_conv2d_advanced         # groups & dilation
+./build/synara_parallel_bench          # threaded kernel benchmark & tuning demo
 ./build/synara_mnist_cnn <mnist_dir> [epochs] [batch_size] [train_limit] [test_limit]
 ```
 

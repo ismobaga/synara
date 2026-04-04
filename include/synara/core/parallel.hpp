@@ -22,4 +22,10 @@ namespace synara
     void set_parallel_config(const ParallelConfig &config) noexcept;
     void reset_parallel_config() noexcept;
 
+    // Heuristic tuning based on a representative workload size.
+    ParallelConfig autotune_parallel_config(Size workload_size,
+                                            int preferred_threads = 0) noexcept;
+    void apply_autotuned_parallel_config(Size workload_size,
+                                         int preferred_threads = 0) noexcept;
+
 } // namespace synara

@@ -31,6 +31,60 @@ namespace synara
             return enabled;
         }
 
+        std::string escape_json(const std::string &value)
+        {
+            std::string escaped;
+            escaped.reserve(value.size());
+            for (const char c : value)
+            {
+                switch (c)
+                {
+                case '\\':
+                    escaped += "\\\\";
+                    break;
+                case '"':
+                    escaped += "\\\"";
+                    break;
+                case '\n':
+                    escaped += "\\n";
+                    break;
+                case '\r':
+                    escaped += "\\r";
+                    break;
+                case '\t':
+                    escaped += "\\t";
+                    break;
+                default:
+                    escaped.push_back(c);
+                    break;
+                }
+            }
+            return escaped;
+        }
+
+        std::string escape_csv(const std::string &value)
+        {
+            if (value.find_first_of(",\"\n\r") == std::string::npos)
+            {
+                return value;
+            }
+
+            std::string escaped = "\"";
+            for (const char c : value)
+            {
+                if (c == '"')
+                {
+                    escaped += "\"\"";
+                }
+                else
+                {
+                    escaped.push_back(c);
+                }
+            }
+            escaped.push_back('"');
+            return escaped;
+        }
+
     } // namespace
 
     bool profiling_enabled() noexcept
@@ -125,6 +179,55 @@ namespace synara
                 << ", min_ms=" << stats.min_ms
                 << ", max_ms=" << stats.max_ms << "\n";
         }
+        return oss.str();
+    }
+
+    std::string format_profile_csv()
+    {
+        const auto summary = profile_summary();
+        std::ostringstream oss;
+        oss << "name,calls,total_ms,avg_ms,min_ms,max_ms\n";
+        oss << std::fixed << std::setprecision(3);
+
+        for (const auto &stats : summary)
+        {
+            oss << escape_csv(stats.name) << ","
+                << stats.calls << ","
+                << stats.total_ms << ","
+                << stats.average_ms() << ","
+                << stats.min_ms << ","
+                << stats.max_ms << "\n";
+        }
+
+        return oss.str();
+    }
+
+    std::string format_profile_json()
+    {
+        const auto summary = profile_summary();
+        std::ostringstream oss;
+        oss << std::fixed << std::setprecision(3);
+        oss << "[";
+
+        for (std::size_t i = 0; i < summary.size(); ++i)
+        {
+            if (i > 0)
+            {
+                oss << ",";
+            }
+
+            const auto &stats = summary[i];
+            oss << "{"
+                << "\"name\":\"" << escape_json(stats.name) << "\""
+                << ",\"calls\":" << stats.calls
+                << ",\"total_ms\":" << stats.total_ms
+                << ",\"avg_ms\":" << stats.average_ms()
+                << ",\"min_ms\":" << stats.min_ms
+                << ",\"max_ms\":" << stats.max_ms
+                << "}";
+        }
+
+        oss << "]";
         return oss.str();
     }
 

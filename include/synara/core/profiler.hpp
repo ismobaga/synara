@@ -31,6 +31,8 @@ namespace synara
     ProfileStats get_profile_stats(const std::string &name);
     std::vector<ProfileStats> profile_summary();
     std::string format_profile_summary();
+    std::string format_profile_csv();
+    std::string format_profile_json();
 
     class ScopedProfile
     {

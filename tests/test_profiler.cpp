@@ -26,6 +26,14 @@ int main()
     const std::string report = format_profile_summary();
     assert(report.find("sleep_scope") != std::string::npos);
 
+    const std::string csv = format_profile_csv();
+    assert(csv.find("name,calls,total_ms,avg_ms,min_ms,max_ms") != std::string::npos);
+    assert(csv.find("sleep_scope") != std::string::npos);
+
+    const std::string json = format_profile_json();
+    assert(json.find("\"name\":\"sleep_scope\"") != std::string::npos);
+    assert(json.find("\"calls\":1") != std::string::npos);
+
     enable_profiling(false);
     {
         ScopedProfile disabled_profile("disabled_scope");

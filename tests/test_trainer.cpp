@@ -66,6 +66,13 @@ int main()
     assert(get_profile_stats("eval_epoch.total").calls >= 1);
     assert(get_profile_stats("eval_epoch.forward").calls >= eval_stats.batches);
 
+    const std::string train_csv = format_epoch_stats_csv(train_stats);
+    assert(train_csv.find("mean_loss,batches,total_ms,data_ms,forward_ms,loss_ms,zero_grad_ms,backward_ms,step_ms") != std::string::npos);
+
+    const std::string train_json = format_epoch_stats_json(train_stats);
+    assert(train_json.find("\"batches\":2") != std::string::npos);
+    assert(train_json.find("\"forward_ms\":") != std::string::npos);
+
     assert(train_loss >= 0.0f);
     assert(eval_loss >= 0.0f);
 

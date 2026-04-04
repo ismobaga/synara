@@ -1,6 +1,8 @@
 #pragma once
 
 #include <chrono>
+#include <iomanip>
+#include <sstream>
 #include <string>
 #include <utility>
 
@@ -30,6 +32,47 @@ namespace synara
             return batches == 0 ? 0.0 : total_ms / static_cast<double>(batches);
         }
     };
+
+    inline std::string format_epoch_stats_csv(const EpochStats &stats, bool include_header = true)
+    {
+        std::ostringstream oss;
+        if (include_header)
+        {
+            oss << "mean_loss,batches,total_ms,data_ms,forward_ms,loss_ms,zero_grad_ms,backward_ms,step_ms,avg_batch_ms\n";
+        }
+
+        oss << std::fixed << std::setprecision(3)
+            << static_cast<double>(stats.mean_loss) << ","
+            << stats.batches << ","
+            << stats.total_ms << ","
+            << stats.data_ms << ","
+            << stats.forward_ms << ","
+            << stats.loss_ms << ","
+            << stats.zero_grad_ms << ","
+            << stats.backward_ms << ","
+            << stats.step_ms << ","
+            << stats.average_batch_ms();
+        return oss.str();
+    }
+
+    inline std::string format_epoch_stats_json(const EpochStats &stats)
+    {
+        std::ostringstream oss;
+        oss << std::fixed << std::setprecision(3)
+            << "{"
+            << "\"mean_loss\":" << static_cast<double>(stats.mean_loss)
+            << ",\"batches\":" << stats.batches
+            << ",\"total_ms\":" << stats.total_ms
+            << ",\"data_ms\":" << stats.data_ms
+            << ",\"forward_ms\":" << stats.forward_ms
+            << ",\"loss_ms\":" << stats.loss_ms
+            << ",\"zero_grad_ms\":" << stats.zero_grad_ms
+            << ",\"backward_ms\":" << stats.backward_ms
+            << ",\"step_ms\":" << stats.step_ms
+            << ",\"avg_batch_ms\":" << stats.average_batch_ms()
+            << "}";
+        return oss.str();
+    }
 
     namespace detail
     {

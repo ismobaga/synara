@@ -6,6 +6,7 @@
 
 // Core
 #include "synara/core/parallel.hpp"
+#include "synara/core/profiler.hpp"
 
 // Autograd
 #include "synara/autograd/node.hpp"

@@ -70,6 +70,20 @@ set_parallel_config(tuned);
 apply_autotuned_parallel_config(1 << 18, 4);
 ```
 
+Lightweight profiling helper:
+
+```cpp
+using namespace synara;
+
+reset_profile_data();
+{
+    ScopedProfile profile("train_step");
+    // work to measure
+}
+
+std::cout << format_profile_summary() << "\n";
+```
+
 ## Run Tests
 
 ```bash

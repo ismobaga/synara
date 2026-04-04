@@ -26,8 +26,14 @@ int main()
     auto a = Tensor::uniform(Shape({256, 256}), -1.0, 1.0);
     auto b = Tensor::uniform(Shape({256, 256}), -1.0, 1.0);
 
+    reset_profile_data();
+
     auto t0 = std::chrono::steady_clock::now();
-    auto c = matmul(a, b);
+    Tensor c;
+    {
+        ScopedProfile profile("matmul_demo");
+        c = matmul(a, b);
+    }
     auto t1 = std::chrono::steady_clock::now();
 
     auto x = Tensor::uniform(Shape({4, 8, 32, 32}), -1.0, 1.0);
@@ -35,10 +41,18 @@ int main()
     auto bias = Tensor::uniform(Shape({16}), -0.1, 0.1);
 
     auto t2 = std::chrono::steady_clock::now();
-    auto y = conv2d(x, w, bias, 1, 1, 1, 1);
+    Tensor y;
+    {
+        ScopedProfile profile("conv2d_demo");
+        y = conv2d(x, w, bias, 1, 1, 1, 1);
+    }
     auto t3 = std::chrono::steady_clock::now();
 
-    auto p = max_pool2d(y, 2, 2, 2, 2, 0, 0);
+    Tensor p;
+    {
+        ScopedProfile profile("maxpool_demo");
+        p = max_pool2d(y, 2, 2, 2, 2, 0, 0);
+    }
     auto t4 = std::chrono::steady_clock::now();
 
     const auto matmul_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
@@ -48,7 +62,9 @@ int main()
     std::cout << "matmul_ms=" << matmul_ms << "\n";
     std::cout << "conv2d_ms=" << conv_ms << "\n";
     std::cout << "maxpool_ms=" << pool_ms << "\n";
-    std::cout << "sample=" << c.at({0, 0}) + p.at({0, 0, 0, 0}) << "\n";
+    std::cout << "sample=" << c.at({0, 0}) + p.at({0, 0, 0, 0}) << "\n\n";
+
+    std::cout << format_profile_summary();
 
     return 0;
 }

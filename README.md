@@ -84,6 +84,15 @@ reset_profile_data();
 std::cout << format_profile_summary() << "\n";
 ```
 
+Trainer-level profiling hooks:
+
+```cpp
+auto stats = train_epoch_profiled(model, loader, optimizer, loss_fn);
+std::cout << "loss=" << stats.mean_loss
+          << ", avg_batch_ms=" << stats.average_batch_ms() << "\n";
+std::cout << format_profile_summary() << "\n";
+```
+
 ## Run Tests
 
 ```bash
